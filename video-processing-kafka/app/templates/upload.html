@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Video Upload</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; }
+    .card { max-width: 720px; padding: 20px; border: 1px solid #ddd; border-radius: 10px; }
+    button { padding: 8px 12px; }
+    .row { margin-top: 12px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    pre { background: #f7f7f7; padding: 10px; border-radius: 6px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Upload Video</h1>
+    <form id="uploadForm" action="/upload" method="post" enctype="multipart/form-data">
+      <input type="file" name="file" accept="video/*" required />
+      <button type="submit">Upload</button>
+    </form>
+    <div id="status" class="row"></div>
+    <div id="jobs" class="row"></div>
+  </div>
+  <script>
+    const form = document.getElementById("uploadForm");
+    const statusEl = document.getElementById("status");
+    const jobsEl = document.getElementById("jobs");
+    const streams = new Map();
+
+    function renderPayload(container, payload) {
+      const statusNode = container.querySelector(".job-status");
+      const detailsNode = container.querySelector(".job-details");
+      statusNode.textContent = `Status: ${payload.status || "unknown"}`;
+      const lines = [];
+      lines.push(`video_id: ${payload.video_id || ""}`);
+      lines.push(`file_path: ${payload.file_path || ""}`);
+      lines.push(`thumbnail_path: ${payload.thumbnail_path || ""}`);
+      lines.push("");
+      lines.push("transcript:");
+      lines.push(payload.transcript || "");
+      lines.push("");
+      lines.push("summary:");
+      lines.push(payload.summary || "");
+      lines.push("");
+      lines.push("bulletpoints:");
+      lines.push(payload.bulletpoints || "");
+      lines.push("");
+      lines.push("action_items:");
+      lines.push(payload.action_items || "");
+      lines.push("");
+      lines.push("translation:");
+      lines.push(payload.translation || "");
+      detailsNode.innerHTML = `<pre class="mono">${lines.join("\n")}</pre>`;
+    }
+
+    function createJobCard(videoId) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "card";
+      wrapper.style.marginTop = "16px";
+      wrapper.innerHTML = `
+        <h2 class="mono">${videoId}</h2>
+        <div class="job-status row">Connecting...</div>
+        <div class="job-details row"></div>
+      `;
+      jobsEl.prepend(wrapper);
+      return wrapper;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      statusEl.textContent = "Uploading...";
+
+      const formData = new FormData(form);
+      const resp = await fetch("/upload", { method: "POST", body: formData });
+      if (!resp.ok) {
+        statusEl.textContent = "Upload failed.";
+        return;
+      }
+      const data = await resp.json();
+      statusEl.textContent = `Queued: ${data.video_id}`;
+
+      const card = createJobCard(data.video_id);
+      if (streams.has(data.video_id)) {
+        streams.get(data.video_id).close();
+      }
+      const source = new EventSource(`/events/${data.video_id}`);
+      streams.set(data.video_id, source);
+      source.onmessage = (event) => {
+        const payload = JSON.parse(event.data);
+        if (payload.error) {
+          card.querySelector(".job-status").textContent = "Not found.";
+          source.close();
+          streams.delete(data.video_id);
+          return;
+        }
+        renderPayload(card, payload);
+        if (payload.status === "complete") {
+          source.close();
+          streams.delete(data.video_id);
+        }
+      };
+      source.onerror = () => {
+        card.querySelector(".job-status").textContent = "Event stream error.";
+        source.close();
+        streams.delete(data.video_id);
+      };
+    });
+  </script>
+</body>
+</html>

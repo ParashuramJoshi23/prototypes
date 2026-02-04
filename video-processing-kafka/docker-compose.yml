@@ -1,0 +1,77 @@
+version: "3.9"
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.7
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.7.7
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+
+  app:
+    build: .
+    environment:
+      - DATABASE_URL=sqlite:///./data/app.db
+      - UPLOAD_DIR=./data/uploads
+      - THUMBNAIL_DIR=./data/thumbnails
+      - KAFKA_BROKER=kafka:9092
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8001:8000"
+    depends_on:
+      - kafka
+      - redis
+
+  worker:
+    build: .
+    command: ["celery", "-A", "app.tasks", "worker", "--loglevel=INFO"]
+    environment:
+      - DATABASE_URL=sqlite:///./data/app.db
+      - UPLOAD_DIR=./data/uploads
+      - THUMBNAIL_DIR=./data/thumbnails
+      - KAFKA_BROKER=kafka:9092
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - kafka
+      - redis
+
+  consumer:
+    build: .
+    command: ["python", "-m", "app.consumer"]
+    environment:
+      - DATABASE_URL=sqlite:///./data/app.db
+      - UPLOAD_DIR=./data/uploads
+      - THUMBNAIL_DIR=./data/thumbnails
+      - KAFKA_BROKER=kafka:9092
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - kafka
+      - redis
