@@ -46,4 +46,4 @@ pytest
 
 ## Screenshot
 
-![Upload video UI](/Users/parashuram/.cursor/projects/Users-parashuram-projects-prototypes/assets/Screenshot_2026-02-04_at_5.26.17_PM-d96cd12a-5fd4-4294-8c7f-7e06159cfb21.png)
+<img width="871" height="845" alt="Screenshot 2026-02-04 at 5 26 17 PM" src="https://github.com/user-attachments/assets/35273ee3-4a55-497f-b156-9b0a89665b5f" />
