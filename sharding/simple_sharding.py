@@ -1,71 +1,122 @@
 """
-Simplest possible database sharding demo.
+Database sharding demo — Flask API
+===================================
+Two SQLite shards (db1.sqlite, db2.sqlite).
+Shard is chosen by:  shard = user_id % NUM_SHARDS
 
-Two SQLite databases (db1.sqlite, db2.sqlite).
-Rule: user_id == 2 → DB 2, everything else → DB 1.
-We only READ from them.
+Endpoints:
+    GET  /users              — list all users across all shards
+    GET  /user/<id>          — look up a single user (routed to correct shard)
+
+Run:
+    pip install -r requirements.txt
+    python simple_sharding.py
 """
 
 import sqlite3
 import os
+from flask import Flask, jsonify
 
-# ---------- SETUP: Create two small databases with some data ----------
+app = Flask(__name__)
+
+NUM_SHARDS = 2
+DB_FILES   = {1: "db1.sqlite", 2: "db2.sqlite"}
+
+
+# ─────────────────────────────────────────
+# Shard router
+# ─────────────────────────────────────────
+
+def shard_for(user_id: int) -> int:
+    """Returns shard number (1 or 2) for a given user_id."""
+    return (user_id % NUM_SHARDS) + 1   # 1-indexed: 1 or 2
+
+
+def get_conn(shard: int) -> sqlite3.Connection:
+    conn = sqlite3.connect(DB_FILES[shard])
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+# ─────────────────────────────────────────
+# DB setup
+# ─────────────────────────────────────────
 
 def setup_databases():
-    # DB 1: holds user 1 and user 3
-    conn1 = sqlite3.connect("db1.sqlite")
-    conn1.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER, name TEXT, city TEXT)")
-    conn1.execute("DELETE FROM users")  # fresh start
-    conn1.execute("INSERT INTO users VALUES (1, 'Ravi', 'Bangalore')")
-    conn1.execute("INSERT INTO users VALUES (3, 'Amit', 'Mumbai')")
-    conn1.commit()
-    conn1.close()
+    for shard, path in DB_FILES.items():
+        conn = sqlite3.connect(path)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id INTEGER PRIMARY KEY,
+                name    TEXT NOT NULL,
+                city    TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+        conn.close()
 
-    # DB 2: holds user 2
-    conn2 = sqlite3.connect("db2.sqlite")
-    conn2.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER, name TEXT, city TEXT)")
-    conn2.execute("DELETE FROM users")
-    conn2.execute("INSERT INTO users VALUES (2, 'Priya', 'Delhi')")
-    conn2.commit()
-    conn2.close()
+    seed = [
+        (1, "Ravi",  "Bangalore"),
+        (2, "Priya", "Delhi"),
+        (3, "Amit",  "Mumbai"),
+        (4, "Sara",  "Chennai"),
+        (5, "Kiran", "Hyderabad"),
+    ]
+    for user_id, name, city in seed:
+        shard = shard_for(user_id)
+        conn  = get_conn(shard)
+        conn.execute(
+            "INSERT OR IGNORE INTO users (user_id, name, city) VALUES (?, ?, ?)",
+            (user_id, name, city),
+        )
+        conn.commit()
+        conn.close()
 
-    print("Created db1.sqlite (users 1, 3) and db2.sqlite (user 2)\n")
-
-
-# ---------- THE SHARD ROUTER: This is the entire concept ----------
-
-def get_db(user_id):
-    """Pick which database to query."""
-    if user_id == 2:
-        return sqlite3.connect("db2.sqlite")
-    else:
-        return sqlite3.connect("db1.sqlite")
-
-
-# ---------- QUERY: Just a normal SELECT, but on the right DB ----------
-
-def find_user(user_id):
-    db = get_db(user_id)  # ← This is sharding. That's it.
-    cursor = db.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    db.close()
-
-    if row:
-        print(f"  user_id={row[0]}, name={row[1]}, city={row[2]}")
-    else:
-        print(f"  user {user_id} not found")
+    print(f"Shards ready: {DB_FILES}")
+    print(f"Routing rule: shard = (user_id % {NUM_SHARDS}) + 1\n")
 
 
-# ---------- RUN IT ----------
+# ─────────────────────────────────────────
+# Routes
+# ─────────────────────────────────────────
 
-setup_databases()
+@app.get("/users")
+def list_users():
+    """Return all users from every shard."""
+    all_users = []
+    for shard, path in DB_FILES.items():
+        conn = get_conn(shard)
+        rows = conn.execute("SELECT * FROM users ORDER BY user_id").fetchall()
+        conn.close()
+        for row in rows:
+            all_users.append({**dict(row), "shard": shard})
+    all_users.sort(key=lambda u: u["user_id"])
+    return jsonify(all_users)
 
-for uid in [1, 2, 3]:
-    db_name = "db2" if uid == 2 else "db1"
-    print(f"Looking up user {uid} → routed to {db_name}")
-    find_user(uid)
-    print()
 
-# Cleanup
-os.remove("db1.sqlite")
-os.remove("db2.sqlite")
+@app.get("/user/<int:user_id>")
+def get_user(user_id):
+    """Look up a single user — routed to the correct shard."""
+    shard = shard_for(user_id)
+    conn  = get_conn(shard)
+    row   = conn.execute(
+        "SELECT * FROM users WHERE user_id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+
+    if row is None:
+        return jsonify({"error": f"user {user_id} not found", "shard": shard}), 404
+
+    return jsonify({**dict(row), "shard": shard})
+
+
+# ─────────────────────────────────────────
+# Entry point
+# ─────────────────────────────────────────
+
+if __name__ == "__main__":
+    setup_databases()
+    print("Endpoints:")
+    print("  GET  http://localhost:8080/users")
+    print("  GET  http://localhost:8080/user/<id>\n")
+    app.run(debug=False, port=8080)

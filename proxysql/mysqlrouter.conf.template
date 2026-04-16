@@ -1,0 +1,39 @@
+# MySQL Router config — static routing, no InnoDB Cluster required.
+#
+# Three endpoints:
+#   :6033  → master     (writes: INSERT / UPDATE / DELETE / DDL)
+#   :6034  → replica-1  (reads:  SELECT)
+#   :6035  → replica-2  (reads:  SELECT)
+#
+# The ProxyRouter class in proxysql_demo.py inspects each query,
+# applies hostgroup rules, tracks least-connections, and picks the port.
+# This mirrors exactly what ProxySQL does internally.
+
+[DEFAULT]
+logging_folder = RUNTIME_DIR
+runtime_folder = RUNTIME_DIR
+
+[logger]
+level    = INFO
+filename = mysqlrouter.log
+
+[routing:writes]
+bind_address     = 127.0.0.1
+bind_port        = 6033
+destinations     = 127.0.0.1:MASTER_PORT
+routing_strategy = first-available
+protocol         = classic
+
+[routing:reads]
+bind_address     = 127.0.0.1
+bind_port        = 6034
+destinations     = 127.0.0.1:REPLICA_PORT
+routing_strategy = round-robin
+protocol         = classic
+
+[routing:reads2]
+bind_address     = 127.0.0.1
+bind_port        = 6035
+destinations     = 127.0.0.1:REPLICA2_PORT
+routing_strategy = round-robin
+protocol         = classic
