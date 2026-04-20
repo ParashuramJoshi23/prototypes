@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+  <header>
+    <span class="header-title">💬 Chat</span>
+    <button id="clearBtn" class="clear-btn" title="Clear conversation">
+      Clear
+    </button>
+  </header>
+
+  <!-- Chat messages -->
+  <main id="chatBox" aria-live="polite" aria-label="Conversation">
+    <div class="welcome-msg">
+      Type a short message or press the mic to speak.<br>
+      <span class="welcome-sub">Say or type anything — I'll understand.</span>
+    </div>
+  </main>
+
+  <!-- Typing indicator (hidden by default) -->
+  <div id="thinkingBar" class="thinking-bar hidden">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  </div>
+
+  <!-- Input row -->
+  <footer>
+    <input
+      id="textInput"
+      type="text"
+      placeholder="Type here…"
+      autocomplete="off"
+      autocorrect="off"
+      spellcheck="false"
+      aria-label="Message input"
+    />
+    <button id="sendBtn" class="send-btn" title="Send">
+      &#9654;
+    </button>
+    <button id="micBtn" class="mic-btn" title="Speak" aria-label="Start voice input">
+      🎤
+    </button>
+  </footer>
+
+  <!-- Voice status bar -->
+  <div id="voiceStatus" class="voice-status hidden">
+    🔴 Listening… <span id="interimText"></span>
+  </div>
+
+  <!-- No-mic warning (shown only if Web Speech API not available) -->
+  <div id="noMicWarning" class="no-mic hidden">
+    Voice input is not supported in this browser. Use Chrome or Edge.
+  </div>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
