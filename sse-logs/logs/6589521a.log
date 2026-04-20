@@ -1,0 +1,38 @@
+2026-04-20T10:59:01.050+00:00 [INFO] ── Phase: INIT ──
+2026-04-20T10:59:01.275+00:00 [INFO] Initializing deployment pipeline
+2026-04-20T10:59:01.960+00:00 [INFO] Loading configuration from deploy.yaml
+2026-04-20T10:59:02.636+00:00 [INFO] Target environment: staging  region: ap-south-1
+2026-04-20T10:59:03.170+00:00 [INFO] Deployment ID: 6589521a  version: 3.9.6
+2026-04-20T10:59:03.662+00:00 [INFO] ── Phase: PROVISION ──
+2026-04-20T10:59:04.020+00:00 [INFO] Provisioning t3.large instance
+2026-04-20T10:59:04.594+00:00 [INFO] Instance i-26253fe37d transitioning to running
+2026-04-20T10:59:05.132+00:00 [WARN] Waiting for instance to pass status checks...
+2026-04-20T10:59:05.578+00:00 [INFO] Instance i-26253fe37d is healthy
+2026-04-20T10:59:06.189+00:00 [INFO] Assigned elastic IP: 205.250.131.126
+2026-04-20T10:59:06.617+00:00 [INFO] ── Phase: PULL ──
+2026-04-20T10:59:06.881+00:00 [INFO] Authenticating with container registry
+2026-04-20T10:59:07.299+00:00 [ERROR] Pulling image you/partner-many-on:3.9.6
+2026-04-20T10:59:07.632+00:00 [INFO] Layer ce726531: Already exists
+2026-04-20T10:59:08.232+00:00 [INFO] Layer ce726531: Pull complete
+2026-04-20T10:59:08.883+00:00 [INFO] Digest: sha256:9459d6164cd40321685a48ae9bd01823
+2026-04-20T10:59:09.336+00:00 [INFO] Image pull complete (440 MB)
+2026-04-20T10:59:09.643+00:00 [INFO] ── Phase: CONFIGURE ──
+2026-04-20T10:59:09.860+00:00 [ERROR] Injecting 20 environment variables
+2026-04-20T10:59:10.468+00:00 [WARN] Mounting volume /data/politics-gun-arrive → /app/data
+2026-04-20T10:59:10.987+00:00 [INFO] Configuring reverse proxy for port 8000
+2026-04-20T10:59:11.659+00:00 [WARN] Deprecated TLS 1.1 detected — forcing TLS 1.2
+2026-04-20T10:59:12.326+00:00 [INFO] Firewall rules updated
+2026-04-20T10:59:12.635+00:00 [INFO] ── Phase: START ──
+2026-04-20T10:59:12.988+00:00 [INFO] Stopping old container af6400b6632b
+2026-04-20T10:59:13.527+00:00 [INFO] Starting container 159db242dec9
+2026-04-20T10:59:13.910+00:00 [INFO] Container bound to 0.0.0.0:8000
+2026-04-20T10:59:14.555+00:00 [INFO] Process PID 45373 is running
+2026-04-20T10:59:14.936+00:00 [INFO] ── Phase: HEALTH ──
+2026-04-20T10:59:15.163+00:00 [WARN] Running health check: GET http://localhost:3000/healthz
+2026-04-20T10:59:15.469+00:00 [WARN] Health check attempt 1/3 — waiting 890ms
+2026-04-20T10:59:15.971+00:00 [INFO] Health check passed: HTTP 200 in 890ms
+2026-04-20T10:59:16.594+00:00 [INFO] Load balancer target registered
+2026-04-20T10:59:17.042+00:00 [WARN] Service live at https://johnson.com
+2026-04-20T10:59:17.691+00:00 [INFO] ── Phase: DONE ──
+2026-04-20T10:59:17.899+00:00 [INFO] Rolling update complete — 3 instance(s) healthy
+2026-04-20T10:59:18.531+00:00 [INFO] Deployment 6589521a finished successfully
