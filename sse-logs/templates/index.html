@@ -2,45 +2,45 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Deployment Logs</title>
-  <link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
+  <h2>Deployment Logs</h2>
 
-  <!-- ── Sidebar ──────────────────────────────────────────────── -->
-  <aside id="sidebar">
-    <div class="sidebar-header">
-      <span class="sidebar-title">Deployments</span>
-      <button id="newDeployBtn" class="new-btn">+ New</button>
-    </div>
-    <ul id="deployList" class="deploy-list">
-      <!-- populated by JS -->
-    </ul>
-  </aside>
+  <button onclick="newDeployment()">New Deployment</button>
+  <p id="status"></p>
+  <ul id="logs"></ul>
 
-  <!-- ── Main panel ───────────────────────────────────────────── -->
-  <main id="main">
+  <script>
+    let es = null;
 
-    <!-- Toolbar -->
-    <header class="log-header">
-      <div class="log-title-row">
-        <span id="deployName" class="deploy-name">—</span>
-        <span id="deployId"   class="deploy-id"></span>
-        <span id="statusBadge" class="badge badge--idle">idle</span>
-      </div>
-      <button id="clearBtn" class="clear-btn" title="Clear view">Clear</button>
-    </header>
+    async function newDeployment() {
+      if (es) { es.close(); es = null; }
 
-    <!-- Log output (newest line prepended = at the top) -->
-    <div id="logPanel" class="log-panel">
-      <div id="emptyHint" class="empty-hint">
-        Press <strong>+ New</strong> to start a deployment and stream its logs.
-      </div>
-    </div>
+      document.getElementById("logs").innerHTML = "";
+      document.getElementById("status").textContent = "Creating deployment…";
 
-  </main>
+      const res  = await fetch("/deployments", { method: "POST" });
+      const data = await res.json();
 
-  <script src="/static/app.js"></script>
+      document.getElementById("status").textContent =
+        `${data.name}  (${data.id})  — running`;
+
+      es = new EventSource(`/deployments/${data.id}/stream`);
+
+      es.onmessage = (event) => {
+        const li = document.createElement("li");
+        li.textContent = event.data;
+        document.getElementById("logs").prepend(li);
+      };
+
+      es.addEventListener("done", () => {
+        es.close();
+        es = null;
+        document.getElementById("status").textContent =
+          document.getElementById("status").textContent.replace("running", "complete");
+      });
+    }
+  </script>
 </body>
 </html>
