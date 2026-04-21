@@ -20,7 +20,7 @@ const (
 	passengers = 120
 )
 
-func book(db *sql.DB, passenger string, claims map[int][]string, mu *sync.Mutex, wg *sync.WaitGroup) {
+func book(db *sql.DB, passenger string, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	var seatID int
@@ -37,11 +37,6 @@ func book(db *sql.DB, passenger string, claims map[int][]string, mu *sync.Mutex,
 	time.Sleep(5 * time.Millisecond) // widen race window
 
 	db.Exec("UPDATE seats SET booked_by = $1 WHERE id = $2", passenger, seatID)
-
-	// track in memory — DB only keeps last writer, so we record all claimants
-	mu.Lock()
-	claims[seatID] = append(claims[seatID], passenger)
-	mu.Unlock()
 }
 
 func main() {
@@ -54,8 +49,6 @@ func main() {
 
 	db.Exec("UPDATE seats SET booked_by = NULL")
 
-	claims := make(map[int][]string)
-	var mu sync.Mutex
 	var wg sync.WaitGroup
 
 	fmt.Println("Approach : 1 — No Lock")
@@ -67,7 +60,7 @@ func main() {
 
 	for i := range passengers {
 		wg.Add(1)
-		go book(db, fmt.Sprintf("P%03d", i+1), claims, &mu, &wg)
+		go book(db, fmt.Sprintf("P%03d", i+1), &wg)
 	}
 	wg.Wait()
 
@@ -77,15 +70,6 @@ func main() {
 	var booked int
 	db.QueryRow("SELECT COUNT(*) FROM seats WHERE booked_by IS NOT NULL").Scan(&booked)
 
-	// double-booked = seats where multiple goroutines both "claimed" it before any committed
-	doubleBooked := 0
-	for _, claimants := range claims {
-		if len(claimants) > 1 {
-			doubleBooked++
-		}
-	}
-
-	fmt.Printf("\nDuration:      %dms\n", end.Sub(start).Milliseconds())
-	fmt.Printf("Booked:        %d / %d\n", booked, passengers)
-	fmt.Printf("Double-booked: %d\n", doubleBooked)
+	fmt.Printf("\nDuration: %dms\n", end.Sub(start).Milliseconds())
+	fmt.Printf("Booked:   %d / %d\n", booked, passengers)
 }

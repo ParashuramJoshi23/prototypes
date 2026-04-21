@@ -61,6 +61,7 @@ func main() {
 
 	db.Exec("UPDATE seats SET booked_by = NULL")
 
+	// Pre-warm connections so setup time isn't counted in the timer
 	var warmup sync.WaitGroup
 	for range 95 {
 		warmup.Add(1)
@@ -87,17 +88,10 @@ func main() {
 	end := time.Now()
 	fmt.Printf("[END]   %s\n", end.Format("15:04:05.000"))
 
-	var booked, doubleBooked int
+	var booked int
 	db.QueryRow("SELECT COUNT(*) FROM seats WHERE booked_by IS NOT NULL").Scan(&booked)
-	db.QueryRow(`
-		SELECT COUNT(*) FROM (
-			SELECT booked_by FROM seats WHERE booked_by IS NOT NULL
-			GROUP BY booked_by HAVING COUNT(*) > 1
-		) t
-	`).Scan(&doubleBooked)
 
-	fmt.Printf("\nDuration:      %dms\n", end.Sub(start).Milliseconds())
-	fmt.Printf("Booked:        %d / %d\n", booked, passengers)
-	fmt.Printf("Double-booked: %d\n", doubleBooked)
-	fmt.Printf("Failed:        %d\n", failed.Load())
+	fmt.Printf("\nDuration: %dms\n", end.Sub(start).Milliseconds())
+	fmt.Printf("Booked:   %d / %d\n", booked, passengers)
+	fmt.Printf("Failed:   %d\n", failed.Load())
 }

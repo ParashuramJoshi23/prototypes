@@ -4,7 +4,6 @@ Approach 2 — SELECT ... FOR UPDATE (blocking)
 Each thread opens a transaction, locks the first available row with
 FOR UPDATE, updates it, and commits. Concurrent transactions that
 target the same row block until the lock is released, then re-evaluate.
-No double-bookings. Slower under high contention due to queuing.
 """
 
 import threading
@@ -15,7 +14,7 @@ DSN        = "dbname=postgres user=parashuram"
 PASSENGERS = 120
 
 
-def book(passenger: str, results: list, lock: threading.Lock):
+def book(passenger: str):
     conn = psycopg2.connect(DSN)
     try:
         cur = conn.cursor()
@@ -30,13 +29,8 @@ def book(passenger: str, results: list, lock: threading.Lock):
         if row is None:
             conn.rollback()
             return
-
-        seat_id = row[0]
-        cur.execute("UPDATE seats SET booked_by = %s WHERE id = %s", (passenger, seat_id))
+        cur.execute("UPDATE seats SET booked_by = %s WHERE id = %s", (passenger, row[0]))
         conn.commit()
-
-        with lock:
-            results.append(seat_id)
     finally:
         conn.close()
 
@@ -47,14 +41,13 @@ def run():
     conn.cursor().execute("UPDATE seats SET booked_by = NULL")
     conn.close()
 
-    results, lock = [], threading.Lock()
     threads = [
-        threading.Thread(target=book, args=(f"P{i:03d}", results, lock))
+        threading.Thread(target=book, args=(f"P{i:03d}",))
         for i in range(1, PASSENGERS + 1)
     ]
 
-    print(f"Approach : 2 — FOR UPDATE (blocking)")
-    print(f"Language : Python")
+    print("Approach : 2 — FOR UPDATE (blocking)")
+    print("Language : Python")
     print(f"Passengers: {PASSENGERS}")
 
     start = time.time()
@@ -65,24 +58,15 @@ def run():
 
     end = time.time()
     print(f"[END]   {time.strftime('%H:%M:%S')}.{int(end % 1 * 1000):03d}")
-    duration_ms = int((end - start) * 1000)
 
     conn = psycopg2.connect(DSN)
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM seats WHERE booked_by IS NOT NULL")
     booked = cur.fetchone()[0]
-    cur.execute("""
-        SELECT COUNT(*) FROM (
-            SELECT booked_by FROM seats WHERE booked_by IS NOT NULL
-            GROUP BY booked_by HAVING COUNT(*) > 1
-        ) t
-    """)
-    double_booked = cur.fetchone()[0]
     conn.close()
 
-    print(f"\nDuration:      {duration_ms}ms")
-    print(f"Booked:        {booked} / {PASSENGERS}")
-    print(f"Double-booked: {double_booked}")
+    print(f"\nDuration: {int((end - start) * 1000)}ms")
+    print(f"Booked:   {booked} / {PASSENGERS}")
 
 
 if __name__ == "__main__":
