@@ -4,6 +4,6 @@ __pycache__/
 .venv/
 *.sqlite
 sse-logs/logs/
-flight-booking/approach1/go/approach1
-flight-booking/approach2/go/approach2
-flight-booking/approach3/go/approach3
+web-checkin/approach1/go/approach1
+web-checkin/approach2/go/approach2
+web-checkin/approach3/go/approach3
