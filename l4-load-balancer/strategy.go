@@ -6,17 +6,16 @@ import (
 	"sync/atomic"
 )
 
-// Strategy picks one backend address from the pool for each new client
-// connection. Implementations must be safe for concurrent use because the
-// load balancer calls Select from many goroutines at once.
+// Strategy picks one backend for each new client connection. Implementations
+// must be safe for concurrent use because Select is called from many
+// goroutines at once.
 type Strategy interface {
 	Select(backends []*Backend) *Backend
-	Release(b *Backend) // called when a connection ends; only meaningful for stateful strategies
 }
 
-// Backend represents an upstream server. The active counter is updated
-// atomically by the load balancer (and by LeastConnections) to enable
-// connection-aware strategies without taking a lock on the hot path.
+// Backend represents an upstream server. The active counter is incremented
+// by the load balancer when a connection starts and decremented when it
+// ends, so LeastConnections can read it without locking.
 type Backend struct {
 	Addr   string
 	active int64
@@ -27,16 +26,12 @@ func (b *Backend) Inc()           { atomic.AddInt64(&b.active, 1) }
 func (b *Backend) Dec()           { atomic.AddInt64(&b.active, -1) }
 
 // RoundRobin distributes connections in order across the backends.
-type RoundRobin struct {
-	next uint64
-}
+type RoundRobin struct{ next uint64 }
 
 func (r *RoundRobin) Select(backends []*Backend) *Backend {
 	i := atomic.AddUint64(&r.next, 1) - 1
 	return backends[i%uint64(len(backends))]
 }
-
-func (r *RoundRobin) Release(_ *Backend) {}
 
 // Random picks a uniformly random backend on every call.
 type Random struct {
@@ -55,11 +50,8 @@ func (r *Random) Select(backends []*Backend) *Backend {
 	return backends[i]
 }
 
-func (r *Random) Release(_ *Backend) {}
-
 // LeastConnections picks the backend with the fewest in-flight connections.
-// Ties are broken by index order. The caller is responsible for incrementing
-// the backend's active counter before use and calling Release when done.
+// Ties are broken by index order.
 type LeastConnections struct{}
 
 func (LeastConnections) Select(backends []*Backend) *Backend {
@@ -72,5 +64,3 @@ func (LeastConnections) Select(backends []*Backend) *Backend {
 	}
 	return best
 }
-
-func (LeastConnections) Release(_ *Backend) {}

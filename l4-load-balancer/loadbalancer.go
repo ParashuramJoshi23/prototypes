@@ -7,13 +7,14 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 )
 
-// LoadBalancer is a TCP (layer 4) reverse proxy. It accepts client
-// connections on Listen, asks the Strategy to pick a backend, dials the
-// backend, and splices bytes both ways with io.Copy.
+// LoadBalancer is a layer-4 TCP reverse proxy. Because it only shuffles
+// raw bytes between the client socket and the chosen upstream socket, it
+// is protocol-agnostic: plain TCP, HTTP/1.1 (including keep-alive),
+// HTTP/2 over cleartext, and WebSocket (which is just a long-lived TCP
+// stream after the HTTP upgrade) all work without any code changes.
 type LoadBalancer struct {
 	Listen   string
 	Backends []*Backend
@@ -26,14 +27,14 @@ func (lb *LoadBalancer) Run() error {
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", lb.Listen, err)
 	}
-	log.Printf("L4 LB listening on %s -> %d backends", lb.Listen, len(lb.Backends))
+	log.Printf("L4 LB listening on %s -> %v", lb.Listen, backendAddrs(lb.Backends))
 
 	for {
 		client, err := ln.Accept()
 		if err != nil {
 			return fmt.Errorf("accept: %w", err)
 		}
-		go lb.handle(client)
+		go lb.handle(client) // one goroutine per connection
 	}
 }
 
@@ -42,10 +43,7 @@ func (lb *LoadBalancer) handle(client net.Conn) {
 
 	backend := lb.Strategy.Select(lb.Backends)
 	backend.Inc()
-	defer func() {
-		backend.Dec()
-		lb.Strategy.Release(backend)
-	}()
+	defer backend.Dec()
 
 	upstream, err := net.DialTimeout("tcp", backend.Addr, lb.DialTO)
 	if err != nil {
@@ -56,49 +54,38 @@ func (lb *LoadBalancer) handle(client net.Conn) {
 
 	log.Printf("%s <-> %s (active=%d)", client.RemoteAddr(), backend.Addr, backend.Active())
 
-	// Splice client <-> upstream in both directions concurrently.
-	// When either side closes, half-close the other so io.Copy returns.
-	var wg sync.WaitGroup
-	wg.Add(2)
-	go pipe(&wg, upstream, client) // client -> upstream
-	go pipe(&wg, client, upstream) // upstream -> client
-	wg.Wait()
-}
-
-func pipe(wg *sync.WaitGroup, dst, src net.Conn) {
-	defer wg.Done()
-	io.Copy(dst, src)
-	if c, ok := dst.(interface{ CloseWrite() error }); ok {
-		c.CloseWrite()
-	}
-}
-
-// startEchoServers spins up N trivial TCP echo servers and returns their
-// addresses. Useful for smoke-testing the LB without external dependencies.
-func startEchoServers(n int) ([]string, error) {
-	addrs := make([]string, 0, n)
-	for i := 0; i < n; i++ {
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
-		if err != nil {
-			return nil, err
+	// Splice bytes in both directions with io.Copy. When one direction
+	// hits EOF we half-close the other side's write so the peer sees the
+	// FIN (needed for clients like curl/nc that close-after-send and wait
+	// for the response). Both goroutines must finish before we close the
+	// sockets, otherwise we'd cut off an in-flight response. This single
+	// primitive handles request/response (HTTP) and long-lived
+	// bidirectional streams (WebSocket, raw TCP) identically.
+	done := make(chan struct{}, 2)
+	go func() {
+		io.Copy(upstream, client)
+		if u, ok := upstream.(*net.TCPConn); ok {
+			u.CloseWrite()
 		}
-		id := i + 1
-		go func() {
-			for {
-				c, err := ln.Accept()
-				if err != nil {
-					return
-				}
-				go func(conn net.Conn) {
-					defer conn.Close()
-					fmt.Fprintf(conn, "[server-%d] hello\n", id)
-					io.Copy(conn, conn) // echo
-				}(c)
-			}
-		}()
-		addrs = append(addrs, ln.Addr().String())
+		done <- struct{}{}
+	}()
+	go func() {
+		io.Copy(client, upstream)
+		if c, ok := client.(*net.TCPConn); ok {
+			c.CloseWrite()
+		}
+		done <- struct{}{}
+	}()
+	<-done
+	<-done
+}
+
+func backendAddrs(bs []*Backend) []string {
+	out := make([]string, len(bs))
+	for i, b := range bs {
+		out[i] = b.Addr
 	}
-	return addrs, nil
+	return out
 }
 
 func pickStrategy(name string) Strategy {
@@ -117,23 +104,13 @@ func pickStrategy(name string) Strategy {
 
 func main() {
 	listen := flag.String("listen", "127.0.0.1:7000", "address to listen on")
-	backendsFlag := flag.String("backends", "", "comma-separated host:port list; empty = spawn 3 local echo servers")
+	backendsFlag := flag.String("backends", "127.0.0.1:8001,127.0.0.1:8002,127.0.0.1:8003",
+		"comma-separated host:port list of upstream backends")
 	strategyName := flag.String("strategy", "rr", "selection strategy: rr | random | lc")
 	dialTO := flag.Duration("dial-timeout", 2*time.Second, "upstream dial timeout")
 	flag.Parse()
 
-	var addrs []string
-	if *backendsFlag == "" {
-		var err error
-		addrs, err = startEchoServers(3)
-		if err != nil {
-			log.Fatalf("start echo servers: %v", err)
-		}
-		log.Printf("spawned local echo backends: %v", addrs)
-	} else {
-		addrs = strings.Split(*backendsFlag, ",")
-	}
-
+	addrs := strings.Split(*backendsFlag, ",")
 	backends := make([]*Backend, len(addrs))
 	for i, a := range addrs {
 		backends[i] = &Backend{Addr: strings.TrimSpace(a)}
