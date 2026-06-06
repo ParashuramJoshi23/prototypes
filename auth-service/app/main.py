@@ -1,13 +1,19 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
-from app.db import Base, engine
 from app.routers import auth, oauth, scim, sso
 
 settings = get_settings()
 
-Base.metadata.create_all(bind=engine)
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Schema management is handled by Alembic: `alembic upgrade head`
+    yield
+
 
 app = FastAPI(
     title=settings.app_name,
@@ -16,6 +22,7 @@ app = FastAPI(
         "OAuth 2.0 (Google, GitHub), OIDC-based SSO, and SCIM 2.0."
     ),
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

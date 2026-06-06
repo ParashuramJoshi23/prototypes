@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     base_url: str = "http://localhost:8000"
 
     # Database
-    database_url: str = "sqlite:///./auth.db"
+    database_url: str = "postgresql://auth:auth@localhost:5432/auth"
 
     # JWT
     jwt_secret_key: str = "change-me-in-production-use-256-bit-key"
