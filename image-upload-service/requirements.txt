@@ -1,0 +1,9 @@
+fastapi==0.115.5
+uvicorn==0.30.6
+boto3==1.35.76
+pydantic==2.10.3
+sqlalchemy==2.0.36
+psycopg2-binary==2.9.10
+pillow==11.0.0
+cryptography==43.0.3
+python-multipart==0.0.9
