@@ -12,6 +12,11 @@ class UserCreate(BaseModel):
     username: str
 
 
+class UserLogin(BaseModel):
+    email: str
+    username: str = ""
+
+
 class UserOut(BaseModel):
     id: UUID
     email: str

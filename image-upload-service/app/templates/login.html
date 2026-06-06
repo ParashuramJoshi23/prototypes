@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Gallery — Sign In</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 32px rgba(0,0,0,0.10);
+      padding: 48px 40px;
+      width: 100%;
+      max-width: 400px;
+    }
+
+    .logo { font-size: 48px; text-align: center; margin-bottom: 12px; }
+    h1 { font-size: 22px; font-weight: 700; text-align: center; color: #0f172a; margin-bottom: 6px; }
+    .subtitle { text-align: center; color: #64748b; font-size: 14px; margin-bottom: 32px; }
+
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: 600;
+      color: #374151;
+      margin-bottom: 6px;
+      margin-top: 16px;
+    }
+
+    input {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 15px;
+      color: #0f172a;
+      background: #f8fafc;
+      outline: none;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    input:focus { border-color: #6366f1; background: #fff; }
+
+    button {
+      margin-top: 28px;
+      width: 100%;
+      padding: 13px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    button:hover { background: #4f46e5; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .note { text-align: center; color: #94a3b8; font-size: 12px; margin-top: 16px; }
+    .error { color: #dc2626; font-size: 13px; margin-top: 12px; text-align: center; display: none; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">📷</div>
+    <h1>Photo Gallery</h1>
+    <p class="subtitle">Enter your email to sign in or create an account</p>
+
+    <form id="form">
+      <label for="email">Email</label>
+      <input id="email" type="email" placeholder="you@example.com" required autofocus>
+
+      <label for="username">Display name</label>
+      <input id="username" type="text" placeholder="Your name" required>
+
+      <button type="submit" id="btn">Enter Gallery</button>
+    </form>
+
+    <p class="error" id="error"></p>
+    <p class="note">New accounts are created automatically on first sign-in</p>
+  </div>
+
+  <script>
+    document.getElementById('form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById('btn');
+      const errEl = document.getElementById('error');
+      errEl.style.display = 'none';
+      btn.textContent = 'Signing in…';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch('/users/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            username: document.getElementById('username').value.trim(),
+          }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'Sign-in failed');
+        const user = await res.json();
+        sessionStorage.setItem('user', JSON.stringify(user));
+        location.href = `/gallery?user_id=${user.id}`;
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.style.display = 'block';
+        btn.textContent = 'Enter Gallery';
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

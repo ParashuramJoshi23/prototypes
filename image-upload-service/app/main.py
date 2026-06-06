@@ -1,7 +1,9 @@
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app import crud, image, s3
@@ -14,9 +16,12 @@ from app.schemas import (
     UploadRequest,
     UploadResponse,
     UserCreate,
+    UserLogin,
     UserOut,
     ViewUrlResponse,
 )
+
+templates = Jinja2Templates(directory="app/templates")
 
 
 @asynccontextmanager
@@ -29,12 +34,32 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Image Upload Service", lifespan=lifespan)
 
 
+# ── Pages ─────────────────────────────────────────────────────────────────────
+
+@app.get("/", response_class=HTMLResponse)
+def login_page(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+
+@app.get("/gallery", response_class=HTMLResponse)
+def gallery_page(request: Request, user_id: str = ""):
+    return templates.TemplateResponse("gallery.html", {"request": request, "user_id": user_id})
+
+
+# ── Health ────────────────────────────────────────────────────────────────────
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
+
+@app.post("/users/login", response_model=UserOut)
+def login(req: UserLogin, db: Session = Depends(get_db)):
+    """Create account on first visit, return existing account on return visits."""
+    return crud.get_or_create_user(db, email=req.email, username=req.username)
+
 
 @app.post("/users", response_model=UserOut, status_code=201)
 def create_user(req: UserCreate, db: Session = Depends(get_db)):

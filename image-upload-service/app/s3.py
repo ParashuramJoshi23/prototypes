@@ -58,6 +58,20 @@ def ensure_bucket() -> None:
         else:
             raise
 
+    # Allow browsers to PUT directly via pre-signed URLs (required for the frontend)
+    client.put_bucket_cors(
+        Bucket=S3_BUCKET,
+        CORSConfiguration={
+            "CORSRules": [{
+                "AllowedHeaders": ["*"],
+                "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+                "AllowedOrigins": ["*"],
+                "ExposeHeaders": ["ETag"],
+                "MaxAgeSeconds": 3000,
+            }]
+        },
+    )
+
 
 def generate_upload_url(key: str, content_type: str) -> dict:
     url = presign_client().generate_presigned_url(

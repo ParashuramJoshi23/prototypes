@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Photo Gallery</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #f1f5f9;
+      min-height: 100vh;
+      color: #0f172a;
+    }
+
+    /* ── Header ── */
+    header {
+      background: #fff;
+      border-bottom: 1px solid #e2e8f0;
+      padding: 0 24px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+    .logo { font-size: 22px; }
+    .title { font-size: 17px; font-weight: 700; color: #0f172a; }
+    .spacer { flex: 1; }
+    .user-chip {
+      background: #f1f5f9;
+      border-radius: 20px;
+      padding: 5px 14px;
+      font-size: 13px;
+      color: #475569;
+      font-weight: 500;
+    }
+    .btn-upload {
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .btn-upload:hover { background: #4f46e5; }
+
+    /* ── Gallery grid ── */
+    .gallery {
+      padding: 28px 24px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap: 20px;
+    }
+
+    .empty-state {
+      grid-column: 1 / -1;
+      text-align: center;
+      padding: 80px 24px;
+      color: #94a3b8;
+    }
+    .empty-state .icon { font-size: 56px; margin-bottom: 16px; }
+    .empty-state h2 { font-size: 18px; font-weight: 600; color: #64748b; margin-bottom: 8px; }
+    .empty-state p { font-size: 14px; }
+
+    /* ── Photo card ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+      border: 2px solid #e2e8f0;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+      position: relative;
+    }
+    .card:hover { transform: translateY(-3px); box-shadow: 0 10px 28px rgba(0,0,0,0.10); }
+    .card.is-private { border-color: #fbbf24; }
+    .card.not-ready { cursor: default; opacity: 0.7; }
+    .card.not-ready:hover { transform: none; box-shadow: none; }
+
+    .card-thumb {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      display: block;
+      background: #f1f5f9;
+    }
+    .card-placeholder {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #f8fafc;
+      gap: 8px;
+      color: #94a3b8;
+      font-size: 13px;
+    }
+    .card-placeholder .ph-icon { font-size: 32px; }
+
+    /* Private shield overlay on card */
+    .private-overlay {
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      background: rgba(0,0,0,0.55);
+      color: #fbbf24;
+      font-size: 18px;
+      border-radius: 50%;
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .card-footer {
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-top: 1px solid #f1f5f9;
+    }
+    .card-name {
+      flex: 1;
+      font-size: 12px;
+      font-weight: 500;
+      color: #374151;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .badge {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 10px;
+      white-space: nowrap;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .badge-private  { background: #fef3c7; color: #92400e; }
+    .badge-pending  { background: #dbeafe; color: #1e40af; }
+    .badge-failed   { background: #fee2e2; color: #991b1b; }
+
+    /* ── Upload modal ── */
+    .overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .overlay.open { display: flex; }
+
+    .modal {
+      background: #fff;
+      border-radius: 18px;
+      padding: 32px;
+      width: 100%;
+      max-width: 430px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .modal-title { font-size: 17px; font-weight: 700; }
+    .btn-x {
+      background: none;
+      border: none;
+      font-size: 20px;
+      color: #94a3b8;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 6px;
+      line-height: 1;
+    }
+    .btn-x:hover { background: #f1f5f9; color: #475569; }
+
+    /* Drop zone */
+    .dropzone {
+      border: 2px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 36px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      margin-bottom: 20px;
+    }
+    .dropzone:hover, .dropzone.dragover { border-color: #6366f1; background: #eef2ff; }
+    .dropzone input { display: none; }
+    .dz-icon { font-size: 36px; margin-bottom: 10px; }
+    .dz-hint { font-size: 14px; color: #64748b; }
+    .dz-hint span { color: #6366f1; font-weight: 600; }
+    .dz-file { margin-top: 10px; font-size: 13px; font-weight: 500; color: #374151; }
+
+    /* Private toggle */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      background: #f8fafc;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.15s;
+    }
+    .toggle-row:hover { border-color: #cbd5e1; }
+    .toggle-row.active { border-color: #fbbf24; background: #fffbeb; }
+    .toggle-text { flex: 1; }
+    .toggle-text strong { display: block; font-size: 14px; color: #0f172a; }
+    .toggle-text small { font-size: 12px; color: #64748b; }
+    .switch {
+      width: 42px; height: 24px;
+      background: #e2e8f0;
+      border-radius: 12px;
+      position: relative;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .switch::after {
+      content: '';
+      position: absolute;
+      width: 18px; height: 18px;
+      background: #fff;
+      border-radius: 50%;
+      top: 3px; left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .switch.on { background: #f59e0b; }
+    .switch.on::after { transform: translateX(18px); }
+
+    /* Upload button */
+    .btn-go {
+      width: 100%;
+      padding: 13px;
+      background: #6366f1;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn-go:hover:not(:disabled) { background: #4f46e5; }
+    .btn-go:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    /* Progress steps */
+    .steps { margin-top: 20px; border-top: 1px solid #f1f5f9; padding-top: 18px; }
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+      font-size: 13px;
+      color: #cbd5e1;
+      transition: color 0.2s;
+    }
+    .step.active { color: #6366f1; }
+    .step.done   { color: #16a34a; }
+    .step .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #e2e8f0;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .step.active .dot { background: #6366f1; }
+    .step.done   .dot { background: #16a34a; }
+
+    /* ── Lightbox ── */
+    .lightbox {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.88);
+      z-index: 200;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .lightbox.open { display: flex; }
+
+    .lb-inner {
+      position: relative;
+      max-width: min(90vw, 900px);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .lb-img {
+      max-width: 100%;
+      max-height: 78vh;
+      object-fit: contain;
+      border-radius: 8px;
+      display: block;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+    }
+    .lb-caption {
+      margin-top: 16px;
+      text-align: center;
+    }
+    .lb-name { color: #f1f5f9; font-size: 15px; font-weight: 500; }
+    .lb-tag  { margin-top: 6px; font-size: 13px; color: #fbbf24; }
+    .lb-close {
+      position: absolute;
+      top: -14px; right: -14px;
+      background: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 34px; height: 34px;
+      font-size: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      color: #374151;
+    }
+    .lb-close:hover { background: #f1f5f9; }
+  </style>
+</head>
+<body>
+
+<header>
+  <span class="logo">📷</span>
+  <span class="title">Photo Gallery</span>
+  <div class="spacer"></div>
+  <span class="user-chip" id="userChip">…</span>
+  <button class="btn-upload" onclick="openUpload()">&#43; Upload Photo</button>
+</header>
+
+<div class="gallery" id="gallery">
+  <div class="empty-state">
+    <div class="icon">⏳</div>
+    <h2>Loading…</h2>
+  </div>
+</div>
+
+<!-- ── Upload modal ── -->
+<div class="overlay" id="uploadOverlay">
+  <div class="modal">
+    <div class="modal-head">
+      <span class="modal-title">Upload Photo</span>
+      <button class="btn-x" onclick="closeUpload()">✕</button>
+    </div>
+
+    <div class="dropzone" id="dropzone" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" accept="image/*">
+      <div class="dz-icon">🖼️</div>
+      <div class="dz-hint">Drop an image here or <span>browse</span></div>
+      <div class="dz-file" id="dzFile"></div>
+    </div>
+
+    <div class="toggle-row" id="toggleRow" onclick="togglePrivate()">
+      <span style="font-size:20px">🔒</span>
+      <div class="toggle-text">
+        <strong>Private photo</strong>
+        <small>A "PRIVATE" watermark will be stamped on the image</small>
+      </div>
+      <div class="switch" id="privateSwitch"></div>
+    </div>
+
+    <button class="btn-go" id="btnGo" onclick="doUpload()" disabled>Upload</button>
+
+    <div class="steps" id="stepsArea" style="display:none">
+      <div class="step" id="s1"><div class="dot"></div> Getting pre-signed URL…</div>
+      <div class="step" id="s2"><div class="dot"></div> Uploading to S3…</div>
+      <div class="step" id="s3"><div class="dot"></div> Processing &amp; watermarking…</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Lightbox ── -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div class="lb-inner" onclick="event.stopPropagation()">
+    <button class="lb-close" onclick="closeLightbox()">✕</button>
+    <img class="lb-img" id="lbImg" src="" alt="">
+    <div class="lb-caption">
+      <div class="lb-name" id="lbName"></div>
+      <div class="lb-tag"  id="lbTag"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const params  = new URLSearchParams(location.search);
+const USER_ID = params.get('user_id') || JSON.parse(sessionStorage.getItem('user') || '{}').id;
+if (!USER_ID) location.href = '/';
+
+let isPrivate    = false;
+let selectedFile = null;
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+(async function init() {
+  try {
+    const user = await api(`/users/${USER_ID}`);
+    document.getElementById('userChip').textContent = '👤 ' + user.username;
+    sessionStorage.setItem('user', JSON.stringify(user));
+  } catch { /* silently degrade */ }
+  await renderGallery();
+})();
+
+// ── API helper ─────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
+  return res.json();
+}
+
+// ── Gallery ────────────────────────────────────────────────────────────────
+async function renderGallery() {
+  const el = document.getElementById('gallery');
+  el.innerHTML = '';
+
+  let photos;
+  try {
+    photos = await api(`/users/${USER_ID}/photos`);
+  } catch (e) {
+    el.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><h2>Could not load photos</h2><p>${e.message}</p></div>`;
+    return;
+  }
+
+  if (!photos.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="icon">📭</div>
+      <h2>No photos yet</h2>
+      <p>Click <strong>Upload Photo</strong> to add your first one</p>
+    </div>`;
+    return;
+  }
+
+  for (const photo of photos) {
+    el.appendChild(makeCard(photo));
+    if (photo.status === 'ready') fetchCardImage(photo);
+  }
+}
+
+function makeCard(photo) {
+  const ready   = photo.status === 'ready';
+  const priv    = photo.is_private;
+  const failed  = photo.status === 'failed';
+  const pending = photo.status === 'pending' || photo.status === 'processing';
+
+  const div = document.createElement('div');
+  div.className = 'card' + (priv ? ' is-private' : '') + (!ready ? ' not-ready' : '');
+  div.dataset.id = photo.id;
+
+  // Thumbnail area
+  const ph = document.createElement('div');
+  ph.className = 'card-placeholder';
+  ph.id = `ph-${photo.id}`;
+  ph.innerHTML = failed  ? '<span class="ph-icon">❌</span><span>Failed</span>'
+               : pending ? '<span class="ph-icon">⏳</span><span>Processing…</span>'
+               :           '<span class="ph-icon">🖼️</span><span>Loading…</span>';
+  div.appendChild(ph);
+
+  // Lock overlay for private photos
+  if (priv) {
+    const ov = document.createElement('div');
+    ov.className = 'private-overlay';
+    ov.textContent = '🔒';
+    div.appendChild(ov);
+  }
+
+  // Footer
+  const footer = document.createElement('div');
+  footer.className = 'card-footer';
+  footer.innerHTML = `<span class="card-name" title="${photo.filename}">${photo.filename}</span>`;
+  if (priv)    footer.innerHTML += '<span class="badge badge-private">Private</span>';
+  if (pending) footer.innerHTML += '<span class="badge badge-pending">Processing</span>';
+  if (failed)  footer.innerHTML += '<span class="badge badge-failed">Failed</span>';
+  div.appendChild(footer);
+
+  if (ready) div.addEventListener('click', () => openLightbox(photo));
+  return div;
+}
+
+async function fetchCardImage(photo) {
+  try {
+    const { url } = await api(`/photos/${photo.id}/view`);
+    const img = document.createElement('img');
+    img.className = 'card-thumb';
+    img.src = url;
+    img.alt = photo.filename;
+    img.onload = () => {
+      const ph = document.getElementById(`ph-${photo.id}`);
+      if (ph) ph.replaceWith(img);
+    };
+    // stash url on the card so lightbox can use it without re-fetching
+    const card = document.querySelector(`[data-id="${photo.id}"]`);
+    if (card) card.dataset.viewUrl = url;
+  } catch { /* leave placeholder */ }
+}
+
+// ── Lightbox ───────────────────────────────────────────────────────────────
+function openLightbox(photo) {
+  const card = document.querySelector(`[data-id="${photo.id}"]`);
+  const url  = card?.dataset.viewUrl;
+  if (!url) return;
+
+  document.getElementById('lbImg').src  = url;
+  document.getElementById('lbName').textContent = photo.filename;
+  document.getElementById('lbTag').textContent  =
+    photo.is_private ? '🔒 Private — PRIVATE watermark applied by the server' : '';
+  document.getElementById('lightbox').classList.add('open');
+}
+
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+  document.getElementById('lbImg').src = '';
+}
+
+// ── Upload modal ───────────────────────────────────────────────────────────
+function openUpload() {
+  isPrivate = false;
+  selectedFile = null;
+  document.getElementById('privateSwitch').classList.remove('on');
+  document.getElementById('toggleRow').classList.remove('active');
+  document.getElementById('dzFile').textContent = '';
+  document.getElementById('fileInput').value = '';
+  document.getElementById('btnGo').disabled = true;
+  document.getElementById('btnGo').textContent = 'Upload';
+  document.getElementById('stepsArea').style.display = 'none';
+  ['s1','s2','s3'].forEach(id => setStep(id, ''));
+  document.getElementById('uploadOverlay').classList.add('open');
+}
+
+function closeUpload() {
+  document.getElementById('uploadOverlay').classList.remove('open');
+}
+
+function togglePrivate() {
+  isPrivate = !isPrivate;
+  document.getElementById('privateSwitch').classList.toggle('on', isPrivate);
+  document.getElementById('toggleRow').classList.toggle('active', isPrivate);
+}
+
+// File selection
+document.getElementById('fileInput').addEventListener('change', e => {
+  if (e.target.files[0]) pickFile(e.target.files[0]);
+});
+
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('dragover'));
+dz.addEventListener('drop', e => {
+  e.preventDefault();
+  dz.classList.remove('dragover');
+  if (e.dataTransfer.files[0]) pickFile(e.dataTransfer.files[0]);
+});
+
+function pickFile(file) {
+  selectedFile = file;
+  document.getElementById('dzFile').textContent =
+    `📎 ${file.name}  (${(file.size / 1024).toFixed(1)} KB)`;
+  document.getElementById('btnGo').disabled = false;
+}
+
+// Step progress helper
+function setStep(id, state) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.className = 'step' + (state ? ' ' + state : '');
+}
+
+// Upload flow
+async function doUpload() {
+  if (!selectedFile) return;
+
+  const btn = document.getElementById('btnGo');
+  btn.disabled = true;
+  btn.textContent = 'Uploading…';
+  document.getElementById('stepsArea').style.display = 'block';
+  ['s1','s2','s3'].forEach(id => setStep(id, ''));
+
+  try {
+    // 1. Pre-signed URL
+    setStep('s1', 'active');
+    const { upload_url, photo_id } = await api('/photos/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: USER_ID,
+        filename: selectedFile.name,
+        content_type: selectedFile.type || 'image/jpeg',
+        is_private: isPrivate,
+      }),
+    });
+    setStep('s1', 'done');
+
+    // 2. PUT directly to S3
+    setStep('s2', 'active');
+    const s3Res = await fetch(upload_url, {
+      method: 'PUT',
+      headers: { 'Content-Type': selectedFile.type || 'image/jpeg' },
+      body: selectedFile,
+    });
+    if (!s3Res.ok) throw new Error(`S3 upload failed (${s3Res.status})`);
+    setStep('s2', 'done');
+
+    // 3. Confirm + watermark
+    setStep('s3', 'active');
+    await api(`/photos/${photo_id}/confirm`, { method: 'POST' });
+    setStep('s3', 'done');
+
+    btn.textContent = '✓ Done!';
+    setTimeout(async () => {
+      closeUpload();
+      await renderGallery();
+    }, 700);
+
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Retry';
+    alert('Upload failed: ' + err.message);
+  }
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { closeLightbox(); closeUpload(); }
+});
+</script>
+</body>
+</html>
