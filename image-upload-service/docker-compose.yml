@@ -1,0 +1,58 @@
+version: "3.9"
+
+services:
+
+  # ── LocalStack (replaces S3 + CloudFront locally) ──────────────────────────
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # ── PostgreSQL (replaces RDS locally) ──────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=imagedb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── Application ─────────────────────────────────────────────────────────────
+  app:
+    build: .
+    environment:
+      # Database
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/imagedb
+      # S3 / LocalStack
+      - S3_BUCKET=photos
+      - S3_ENDPOINT_URL=http://localstack:4566
+      # Pre-signed URLs must use localhost so clients outside Docker can reach them
+      - PRESIGN_ENDPOINT_URL=http://localhost:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      # CloudFront — leave unset for LocalStack; set all three for real AWS:
+      #   CLOUDFRONT_DOMAIN=abc123.cloudfront.net
+      #   CLOUDFRONT_KEY_PAIR_ID=APKA...
+      #   CLOUDFRONT_PRIVATE_KEY_PATH=/run/secrets/cf_private_key.pem
+    ports:
+      - "8000:8000"
+    depends_on:
+      localstack:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
