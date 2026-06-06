@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      - S3_BUCKET=uploads
+      # App → LocalStack via Docker-internal hostname
+      - S3_ENDPOINT_URL=http://localstack:4566
+      # Pre-signed URLs must point to localhost so clients outside Docker can reach them
+      - PRESIGN_ENDPOINT_URL=http://localhost:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+    ports:
+      - "8000:8000"
+    depends_on:
+      localstack:
+        condition: service_healthy
