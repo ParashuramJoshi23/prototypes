@@ -1,0 +1,108 @@
+version: "3.9"
+
+services:
+
+  # ── Zookeeper (Kafka dependency) ─────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.7.7
+    environment:
+      - ZOOKEEPER_CLIENT_PORT=2181
+      - ZOOKEEPER_TICK_TIME=2000
+    ports:
+      - "2181:2181"
+
+  # ── Kafka ─────────────────────────────────────────────────────────────────────
+  kafka:
+    image: confluentinc/cp-kafka:7.7.7
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_LISTENERS=PLAINTEXT://0.0.0.0:9092
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=true
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+
+  # ── Redis (cache) ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+
+  # ── PostgreSQL (primary store) ────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_DB=hashtagdb
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # ── LocalStack (S3 for pre-signed URLs) ──────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      - SERVICES=s3
+      - DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # ── API service ───────────────────────────────────────────────────────────────
+  app:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/hashtagdb
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379/0
+      - S3_BUCKET=hashtag-media
+      - S3_ENDPOINT_URL=http://localstack:4566
+      # Pre-signed URLs use localhost so clients outside Docker can reach them.
+      - PRESIGN_ENDPOINT_URL=http://localhost:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
+
+  # ── Kafka consumer (background event processor) ───────────────────────────────
+  consumer:
+    build: .
+    command: ["python", "-m", "app.consumer"]
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/hashtagdb
+      - KAFKA_BROKER=kafka:9092
+      - REDIS_URL=redis://redis:6379/0
+      - S3_BUCKET=hashtag-media
+      - S3_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+      redis:
+        condition: service_started
