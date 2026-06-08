@@ -10,11 +10,12 @@ class Settings(BaseSettings):
     db_pool_min: int = 5
     db_pool_max: int = 20
 
-    # Cache TTLs (seconds)
-    cache_ttl_review: int = 300        # 5 min — single review
-    cache_ttl_list: int = 60           # 1 min — paginated list
-    cache_ttl_stats: int = 120         # 2 min — product stats (mv-backed)
-    cache_ttl_top_reviews: int = 120   # 2 min — top reviews (mv-backed)
+    # Longer TTLs are safe because all mutating paths are write-through.
+    # TTL is a last-resort safety net, not the primary freshness mechanism.
+    cache_ttl_review: int = 1800      # 30 min
+    cache_ttl_list: int = 300         # 5 min  (invalidated + page-1 re-warmed on write)
+    cache_ttl_stats: int = 1800       # 30 min (write-through via background refresh)
+    cache_ttl_top_reviews: int = 1800 # 30 min (write-through via background refresh)
 
 
 settings = Settings()

@@ -28,13 +28,17 @@ def get_redis() -> aioredis.Redis:
     return _redis
 
 
-async def cache_get(key: str) -> dict | list | None:
-    raw = await get_redis().get(key)
-    return orjson.loads(raw) if raw else None
+async def cache_get_raw(key: str) -> bytes | None:
+    """Return pre-serialised JSON bytes for direct Response use — zero extra parsing."""
+    val = await get_redis().get(key)
+    return val.encode() if val else None
 
 
-async def cache_set(key: str, value: dict | list, ttl: int) -> None:
-    await get_redis().set(key, orjson.dumps(value).decode(), ex=ttl)
+async def cache_set_obj(key: str, obj, ttl: int) -> bytes:
+    """Serialise obj with orjson, persist to Redis, return bytes for immediate use."""
+    raw = orjson.dumps(obj, default=str)
+    await get_redis().set(key, raw.decode(), ex=ttl)
+    return raw
 
 
 async def cache_delete(*keys: str) -> None:
@@ -44,7 +48,6 @@ async def cache_delete(*keys: str) -> None:
 
 async def cache_delete_pattern(pattern: str) -> None:
     redis = get_redis()
-    # SCAN-based deletion — safe for production (no KEYS blocking)
     cursor = 0
     while True:
         cursor, matched = await redis.scan(cursor, match=pattern, count=200)
