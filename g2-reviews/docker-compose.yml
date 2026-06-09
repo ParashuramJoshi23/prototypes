@@ -1,0 +1,57 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: g2user
+      POSTGRES_PASSWORD: g2pass
+      POSTGRES_DB: g2reviews
+    ports:
+      - "5435:5432"
+    volumes:
+      - ./migrations/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - pg_data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c shared_buffers=256MB
+        -c work_mem=16MB
+        -c max_connections=200
+        -c effective_cache_size=512MB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U g2user -d g2reviews"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    command: >
+      redis-server
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --save ""
+        --appendonly no
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    ports:
+      - "8002:8000"
+    environment:
+      DATABASE_URL: postgresql://g2user:g2pass@postgres:5432/g2reviews
+      REDIS_URL: redis://redis:6379/0
+      DB_POOL_MIN: "5"
+      DB_POOL_MAX: "20"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pg_data:
