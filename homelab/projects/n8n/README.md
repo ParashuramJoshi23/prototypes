@@ -37,6 +37,20 @@ orb -m homelab-a sudo tailscale serve --bg http://127.0.0.1:30678
 
 To stop exposing it: `orb -m homelab-a sudo tailscale serve --https=443 off`.
 
+### macOS DNS note (this Mac)
+The Mac host runs the **headless Homebrew tailscaled** (system daemon, for
+unattended boot). That variant lacks the GUI app's NetworkExtension, so **MagicDNS
+doesn't resolve `*.ts.net` on this Mac**. Worked around with an `/etc/hosts` line:
+
+```
+100.91.12.31  homelab-a.tailbe4cd1.ts.net
+```
+
+`100.91.12.31` is homelab-a's tailnet IP — stable across reboots. **Only** update
+it if the VM's Tailscale node is deleted/recreated (a fresh `tailscale up` =>
+new IP). Phones/other devices using the Tailscale app resolve the name natively
+(no hosts entry needed).
+
 ## Data & secrets
 
 - Workflows/credentials/executions live in shared Postgres (db `n8n`, ~108 tables).
