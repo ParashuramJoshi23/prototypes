@@ -1,0 +1,59 @@
+services:
+  gateway:
+    build:
+      context: .
+      args:
+        SERVICE: gateway
+    ports:
+      - "8080:8080"
+      - "9100:9100"
+    environment:
+      LB_URL: "http://lb:8081"
+    depends_on:
+      - lb
+
+  lb:
+    build:
+      context: .
+      args:
+        SERVICE: lb
+    ports:
+      - "8081:8081"
+      - "9101:9101"
+    environment:
+      BACKENDS: "http://backend-a:8082,http://backend-b:8082"
+    depends_on:
+      - backend-a
+      - backend-b
+
+  backend-a:
+    build:
+      context: .
+      args:
+        SERVICE: backend
+    ports:
+      - "9102:9102"
+    environment:
+      BACKEND_NAME: "backend-a"
+
+  backend-b:
+    build:
+      context: .
+      args:
+        SERVICE: backend
+    ports:
+      - "9103:9102"
+    environment:
+      BACKEND_NAME: "backend-b"
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - gateway
+      - lb
+      - backend-a
+      - backend-b

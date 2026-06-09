@@ -1,0 +1,28 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: gateway
+    static_configs:
+      - targets: ["gateway:9100"]
+        labels:
+          layer: api-gateway
+
+  - job_name: lb
+    static_configs:
+      - targets: ["lb:9101"]
+        labels:
+          layer: load-balancer
+
+  - job_name: backend-a
+    static_configs:
+      - targets: ["backend-a:9102"]
+        labels:
+          layer: backend
+
+  - job_name: backend-b
+    static_configs:
+      - targets: ["backend-b:9102"]
+        labels:
+          layer: backend
