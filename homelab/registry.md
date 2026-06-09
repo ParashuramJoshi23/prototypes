@@ -11,6 +11,7 @@ collision-free (especially Redis DB indices: only 0–15 exist).
 |--------------|--------------|-------------------|----------|--------------|--------------------|-------|
 | _platform_   | postgres     | postgres (super)  | —        | —            | —                  | admin only; used by bootstrap |
 | g2-reviews   | g2_reviews   | g2_reviews_user   | 1        | —            | —                  | PG + Redis only |
+| n8n          | n8n          | n8n_user          | 5*       | —            | n8n-media*         | regular mode (PG only); *redis/bucket reserved, unused until queue/S3 mode. Has its own `N8N_ENCRYPTION_KEY` in `n8n-secrets`. |
 
 <!-- Add a row per onboarded project. Suggested next assignments:
 | auth-service     | auth_service     | auth_service_user     | 2 | —              | —                    |
