@@ -1,0 +1,84 @@
+# Shared LocalStack — S3 only (stand-in for AWS S3 in the homelab).
+# Isolation is per-project via bucket-per-project (see bootstrap-project.sh).
+#
+# DNS for clients: http://localstack.platform.svc.cluster.local:4566
+# Apps set S3_ENDPOINT_URL to that and AWS_ACCESS_KEY_ID/SECRET to "test"/"test".
+#
+# Note on pre-signed URLs: a URL signed against the in-cluster endpoint is only
+# resolvable from inside the cluster. For a browser to use a pre-signed URL,
+# expose LocalStack (NodePort/port-forward) and set PRESIGN_ENDPOINT_URL to the
+# externally reachable address — see homelab/projects/_template/configmap.yaml.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: localstack
+  namespace: platform
+spec:
+  selector:
+    app: localstack
+  ports:
+    - name: edge
+      port: 4566
+      targetPort: 4566
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: localstack
+  namespace: platform
+spec:
+  serviceName: localstack
+  replicas: 1
+  selector:
+    matchLabels:
+      app: localstack
+  template:
+    metadata:
+      labels:
+        app: localstack
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: homelab.tenant
+                    operator: In
+                    values: ["a"]
+      containers:
+        - name: localstack
+          image: localstack/localstack:3.8
+          ports:
+            - containerPort: 4566
+          env:
+            - name: SERVICES
+              value: "s3"
+            - name: PERSISTENCE
+              value: "1"
+            - name: DEBUG
+              value: "0"
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/localstack
+          readinessProbe:
+            httpGet:
+              path: /_localstack/health
+              port: 4566
+            initialDelaySeconds: 15
+            periodSeconds: 10
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 2Gi

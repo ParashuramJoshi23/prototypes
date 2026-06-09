@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform
+  labels:
+    # Tenant boundary for the shared backing stores. Per-project app pods live
+    # in their own namespaces (homelab/projects/<name>) and reach these stores
+    # via cross-namespace DNS: <svc>.platform.svc.cluster.local
+    homelab.role: shared-infra

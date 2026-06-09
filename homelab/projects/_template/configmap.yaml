@@ -1,0 +1,21 @@
+# Non-secret connection wiring for PROJECT. Points the prototype at the SHARED
+# platform stores via cross-namespace DNS. These keys match the env vars the
+# prototypes already read (see each app's config.py) — so no source changes.
+#
+# Edit per project:
+#   - REDIS_URL db index (the number after /) — must be the one in registry.md
+#   - KAFKA topic prefix is a convention ("PROJECT."), enforced in app code
+#   - S3_BUCKET name
+# The DB password / DATABASE_URL live in the Secret created by bootstrap-project.sh,
+# NOT here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: PROJECT-config
+  namespace: PROJECT
+data:
+  REDIS_URL: "redis://redis.platform.svc.cluster.local:6379/0"
+  KAFKA_BROKER: "kafka.platform.svc.cluster.local:9092"
+  S3_ENDPOINT_URL: "http://localstack.platform.svc.cluster.local:4566"
+  S3_BUCKET: "PROJECT-media"
+  AWS_REGION: "us-east-1"
