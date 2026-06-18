@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+ "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.parashuram.claude-vault-mover</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <!-- EDIT: absolute path to where you put the script -->
+    <string>/Users/parashuram/.local/bin/claude-vault-mover.sh</string>
+  </array>
+
+  <!-- launchd re-runs the script whenever this directory changes.
+       Must be an absolute path; ~ is NOT expanded in plists. -->
+  <key>WatchPaths</key>
+  <array>
+    <string>/Users/parashuram/Downloads</string>
+  </array>
+
+  <key>StandardOutPath</key>
+  <string>/Users/parashuram/Library/Logs/claude-vault-mover.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/parashuram/Library/Logs/claude-vault-mover.err.log</string>
+</dict>
+</plist>
