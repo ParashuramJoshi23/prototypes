@@ -23,5 +23,15 @@ CREATE TABLE IF NOT EXISTS answers (
     recorded_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Verbatim turn-by-turn transcript (participant STT + agent TTS lines).
+CREATE TABLE IF NOT EXISTS transcript (
+    id          BIGSERIAL PRIMARY KEY,
+    room        TEXT NOT NULL REFERENCES interviews(room) ON DELETE CASCADE,
+    role        TEXT NOT NULL,           -- 'user' or 'assistant'
+    text        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX IF NOT EXISTS idx_answers_room       ON answers(room, recorded_at);
+CREATE INDEX IF NOT EXISTS idx_transcript_room    ON transcript(room, created_at);
 CREATE INDEX IF NOT EXISTS idx_interviews_started ON interviews(started_at DESC);

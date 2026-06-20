@@ -12,6 +12,7 @@ Run it:
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -116,6 +117,22 @@ async def entrypoint(ctx: JobContext) -> None:
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
     )
+
+    # Persist every committed turn (participant + agent) to the transcript table.
+    room_name = ctx.room.name
+
+    async def _store_turn(role: str, text: str) -> None:
+        try:
+            await results.add_transcript_turn(room_name, role, text)
+        except Exception:  # noqa: BLE001 — never let logging break the call
+            logger.exception("failed to store transcript turn")
+
+    @session.on("conversation_item_added")
+    def _on_item(ev) -> None:
+        role = getattr(ev.item, "role", None)
+        text = getattr(ev.item, "text_content", None)
+        if role in ("user", "assistant") and text:
+            asyncio.create_task(_store_turn(role, text))
 
     await session.start(
         agent=InterviewAgent(survey, ctx.room.name),

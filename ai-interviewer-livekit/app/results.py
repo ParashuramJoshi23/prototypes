@@ -58,7 +58,16 @@ async def complete(room: str) -> None:
     )
 
 
-def _interview_dict(row: Any, answers: list[Any]) -> dict:
+async def add_transcript_turn(room: str, role: str, text: str) -> None:
+    await get_pool().execute(
+        "INSERT INTO transcript (room, role, text) VALUES ($1, $2, $3)",
+        room,
+        role,
+        text,
+    )
+
+
+def _interview_dict(row: Any, answers: list[Any], transcript: list[Any]) -> dict:
     return {
         "room": row["room"],
         "survey_id": row["survey_id"],
@@ -76,6 +85,14 @@ def _interview_dict(row: Any, answers: list[Any]) -> dict:
             }
             for a in answers
         ],
+        "transcript": [
+            {
+                "role": t["role"],
+                "text": t["text"],
+                "at": _iso(t["created_at"]),
+            }
+            for t in transcript
+        ],
     }
 
 
@@ -88,7 +105,10 @@ async def get(room: str) -> Optional[dict]:
         answers = await conn.fetch(
             "SELECT * FROM answers WHERE room = $1 ORDER BY recorded_at, id", room
         )
-        return _interview_dict(row, answers)
+        transcript = await conn.fetch(
+            "SELECT * FROM transcript WHERE room = $1 ORDER BY created_at, id", room
+        )
+        return _interview_dict(row, answers, transcript)
 
 
 async def list_all() -> list[dict]:
@@ -96,7 +116,14 @@ async def list_all() -> list[dict]:
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT * FROM interviews ORDER BY started_at DESC")
         answers = await conn.fetch("SELECT * FROM answers ORDER BY recorded_at, id")
-    grouped: dict[str, list] = {}
+        transcript = await conn.fetch("SELECT * FROM transcript ORDER BY created_at, id")
+    answers_by_room: dict[str, list] = {}
     for a in answers:
-        grouped.setdefault(a["room"], []).append(a)
-    return [_interview_dict(r, grouped.get(r["room"], [])) for r in rows]
+        answers_by_room.setdefault(a["room"], []).append(a)
+    turns_by_room: dict[str, list] = {}
+    for t in transcript:
+        turns_by_room.setdefault(t["room"], []).append(t)
+    return [
+        _interview_dict(r, answers_by_room.get(r["room"], []), turns_by_room.get(r["room"], []))
+        for r in rows
+    ]

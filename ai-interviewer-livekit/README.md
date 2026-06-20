@@ -25,7 +25,7 @@ the **LiveKit Agents** voice pipeline:
 | `app/results.py` | Results store (Postgres via asyncpg) |
 | `app/db.py` | Shared asyncpg connection pool + schema bootstrap |
 | `app/config.py` | Env-driven settings (DB URL, pool sizes, model) |
-| `migrations/init.sql` | `interviews` + `answers` schema |
+| `migrations/init.sql` | `interviews` + `answers` + `transcript` schema |
 | `docker-compose.yml` | Local Postgres for the results store |
 | `surveys/*.yaml` | The surveys themselves — edit these to add your own |
 | `web/index.html` | Minimal browser client (LiveKit JS SDK): pick a survey, talk, see the transcript |
@@ -41,9 +41,17 @@ There's one agent worker but many possible surveys. Selection happens per call:
 4. The agent reads `survey_id` from the participant metadata, loads that survey,
    builds the Claude prompt, and starts interviewing.
 
-Answers are written to Postgres (the `answers` table) as the agent calls its
-`record_answer` tool, and the interview is marked complete (`interviews.completed_at`)
-when it calls `complete_interview`.
+Two things are persisted to Postgres as the call runs:
+
+- **Structured answers** — Claude's concise summary of each answer, written via
+  the `record_answer` tool (the `answers` table).
+- **Verbatim transcript** — every committed turn from the participant and the
+  agent, captured live from the session's `conversation_item_added` event (the
+  `transcript` table).
+
+The interview is marked complete (`interviews.completed_at`) when the agent calls
+`complete_interview`. The `/api/results/<room>` response includes both the
+`answers` and the full `transcript`.
 
 ## Prerequisites
 
