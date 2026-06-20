@@ -1,0 +1,18 @@
+# LiveKit Agents voice framework + plugins (versions track the agents release)
+livekit-agents~=1.6
+livekit-plugins-anthropic~=1.6
+livekit-plugins-deepgram~=1.6
+livekit-plugins-cartesia~=1.6
+livekit-plugins-silero~=1.6
+livekit-plugins-turn-detector~=1.6
+
+# Server SDK (used to mint join tokens)
+livekit-api~=1.0
+
+# Token + survey API and static web host
+fastapi~=0.115
+uvicorn[standard]~=0.32
+
+# Survey loading + config
+pyyaml~=6.0
+python-dotenv~=1.0

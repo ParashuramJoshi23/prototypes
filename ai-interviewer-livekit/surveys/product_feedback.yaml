@@ -1,0 +1,24 @@
+id: product_feedback
+title: Product Feedback Interview
+description: A short voice interview about how you use the product and what you'd improve.
+persona: a curious, friendly product researcher named Riley
+closing: Thanks for walking me through all of that — this is exactly the kind of feedback the team needs.
+questions:
+  - id: role_context
+    text: To start, can you tell me a bit about what you do and how the product fits into your day?
+    intent: Establish the participant's role and usage context.
+  - id: core_jobs
+    text: What's the main thing you're trying to get done when you open the product?
+    intent: Identify the primary job-to-be-done.
+  - id: favorite_feature
+    text: Which feature do you find yourself relying on the most, and why?
+    intent: Find the stickiest, highest-value feature.
+  - id: missing
+    text: Is there anything you wish the product did that it doesn't do today?
+    intent: Surface unmet needs and feature gaps.
+  - id: switch_risk
+    text: If a competitor offered you something we don't, what would it take to make you switch?
+    intent: Understand competitive and retention risk.
+  - id: magic_wand
+    text: Last one — if you had a magic wand and could instantly fix one thing, what would you fix?
+    intent: Capture the single highest-impact improvement.
