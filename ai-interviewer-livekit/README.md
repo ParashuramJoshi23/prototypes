@@ -22,7 +22,11 @@ the **LiveKit Agents** voice pipeline:
 | `app/token_server.py` | FastAPI: lists surveys, mints LiveKit join tokens, serves results + the web client |
 | `app/survey.py` | Loads YAML survey definitions into typed objects |
 | `app/prompts.py` | Turns a survey into the Claude system prompt (interview rules + questions) |
-| `app/results.py` | Per-room JSON results store (one file per interview) |
+| `app/results.py` | Results store (Postgres via asyncpg) |
+| `app/db.py` | Shared asyncpg connection pool + schema bootstrap |
+| `app/config.py` | Env-driven settings (DB URL, pool sizes, model) |
+| `migrations/init.sql` | `interviews` + `answers` schema |
+| `docker-compose.yml` | Local Postgres for the results store |
 | `surveys/*.yaml` | The surveys themselves — edit these to add your own |
 | `web/index.html` | Minimal browser client (LiveKit JS SDK): pick a survey, talk, see the transcript |
 
@@ -37,12 +41,14 @@ There's one agent worker but many possible surveys. Selection happens per call:
 4. The agent reads `survey_id` from the participant metadata, loads that survey,
    builds the Claude prompt, and starts interviewing.
 
-Answers are written to `data/results/<room>.json` as the agent calls its
-`record_answer` tool, and finalized when it calls `complete_interview`.
+Answers are written to Postgres (the `answers` table) as the agent calls its
+`record_answer` tool, and the interview is marked complete (`interviews.completed_at`)
+when it calls `complete_interview`.
 
 ## Prerequisites
 
 - Python 3.10–3.14
+- Docker (for the local Postgres results store), or any reachable Postgres
 - A **LiveKit** project — free at [cloud.livekit.io](https://cloud.livekit.io) (or self-hosted)
 - API keys for **Anthropic** (Claude), **Deepgram** (STT), and **Cartesia** (TTS)
 
@@ -53,7 +59,13 @@ cd ai-interviewer-livekit
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
-cp .env.example .env      # then fill in the five keys/URL
+cp .env.example .env      # then fill in the keys/URL
+```
+
+Start Postgres (the results store). The schema is applied automatically:
+
+```bash
+docker compose up -d
 ```
 
 One-time: download the local model files used by Silero VAD and the turn detector:
@@ -104,10 +116,11 @@ for the list; the agent picks it up per call).
 
 ## Inspecting results
 
-- Files: `data/results/*.json`
 - API: `GET /api/results` (all) or `GET /api/results/<room>` (one interview)
+- SQL: `docker compose exec postgres psql -U interviewer -d interviewer -c \
+  "SELECT survey_id, question_id, answer, sentiment FROM answers ORDER BY recorded_at DESC LIMIT 20;"`
 
-Each record looks like:
+The API shape (interview + nested answers) looks like:
 
 ```json
 {
@@ -132,5 +145,6 @@ Each record looks like:
 - **Telephony.** This prototype is browser↔agent. To take real phone calls, add a
   LiveKit SIP trunk and route inbound calls to the same agent — the interview
   logic is unchanged.
-- **Production.** Results storage is flat JSON files for demo simplicity; swap
-  `app/results.py` for a real database before collecting anything you care about.
+- **Database.** Results live in Postgres (`interviews` + `answers`). Point
+  `DATABASE_URL` at any Postgres instance; the app applies the schema on startup,
+  so a managed/hosted Postgres works without running the bundled compose file.

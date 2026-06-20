@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -23,7 +24,7 @@ from fastapi.responses import FileResponse
 from livekit import api
 from pydantic import BaseModel
 
-from . import results
+from . import db, results
 from .survey import list_surveys, load_survey
 
 load_dotenv()
@@ -34,7 +35,15 @@ LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 
-app = FastAPI(title="AI Interviewer (LiveKit)")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await db.init_db()
+    yield
+    await db.close_db()
+
+
+app = FastAPI(title="AI Interviewer (LiveKit)", lifespan=lifespan)
 
 
 class TokenRequest(BaseModel):
@@ -97,13 +106,13 @@ def create_token(req: TokenRequest) -> dict:
 
 
 @app.get("/api/results")
-def all_results() -> list[dict]:
-    return results.list_all()
+async def all_results() -> list[dict]:
+    return await results.list_all()
 
 
 @app.get("/api/results/{room}")
-def room_results(room: str) -> dict:
-    rec = results.get(room)
+async def room_results(room: str) -> dict:
+    rec = await results.get(room)
     if rec is None:
         raise HTTPException(status_code=404, detail="No results recorded for that room yet.")
     return rec

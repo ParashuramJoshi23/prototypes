@@ -13,6 +13,10 @@ livekit-api~=1.0
 fastapi~=0.115
 uvicorn[standard]~=0.32
 
+# Results storage (Postgres)
+asyncpg~=0.30
+
 # Survey loading + config
 pyyaml~=6.0
 python-dotenv~=1.0
+pydantic-settings~=2.5

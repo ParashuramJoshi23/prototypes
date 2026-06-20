@@ -1,110 +1,102 @@
-"""Results storage.
+"""Results storage, backed by Postgres (asyncpg).
 
-One JSON file per interview room under ``data/results/<room>.json``. The agent
-process is the only writer for a given room; the token server only reads. That
-makes cross-process coordination trivial for a prototype — no database needed.
+Two tables: ``interviews`` (one row per room) and ``answers`` (one row per
+recorded answer). The agent worker writes; the token server reads. All
+functions are async and use the shared pool from ``app.db``.
 """
 from __future__ import annotations
 
-import json
-import os
-import threading
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime
 from typing import Any, Optional
 
-DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-_lock = threading.Lock()
+from .db import get_pool
 
 
-def _results_dir() -> Path:
-    d = Path(os.getenv("DATA_DIR", DEFAULT_DATA_DIR)) / "results"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def _iso(dt: Optional[datetime]) -> Optional[str]:
+    return dt.isoformat() if dt else None
 
 
-def _path(room: str) -> Path:
-    # Room names are server-generated (interview-<survey>-<hex>); guard anyway.
-    safe = "".join(c for c in room if c.isalnum() or c in "-_")
-    return _results_dir() / f"{safe}.json"
+async def start_session(
+    room: str, survey_id: str, survey_title: str, participant: str
+) -> None:
+    await get_pool().execute(
+        """
+        INSERT INTO interviews (room, survey_id, survey_title, participant)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (room) DO NOTHING
+        """,
+        room,
+        survey_id,
+        survey_title,
+        participant,
+    )
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _read(room: str) -> Optional[dict[str, Any]]:
-    path = _path(room)
-    if not path.exists():
-        return None
-    return json.loads(path.read_text())
-
-
-def _write(room: str, rec: dict[str, Any]) -> None:
-    _path(room).write_text(json.dumps(rec, indent=2))
-
-
-def start_session(room: str, survey_id: str, survey_title: str, participant: str) -> dict:
-    with _lock:
-        rec = {
-            "room": room,
-            "survey_id": survey_id,
-            "survey_title": survey_title,
-            "participant": participant,
-            "started_at": _now(),
-            "completed_at": None,
-            "answers": [],
-        }
-        _write(room, rec)
-        return rec
-
-
-def record_answer(
+async def record_answer(
     room: str,
     question_id: str,
     question_text: str,
     answer: str,
     sentiment: Optional[str] = None,
 ) -> None:
-    with _lock:
-        rec = _read(room) or {
-            "room": room,
-            "started_at": _now(),
-            "completed_at": None,
-            "answers": [],
-        }
-        rec.setdefault("answers", []).append(
+    await get_pool().execute(
+        """
+        INSERT INTO answers (room, question_id, question_text, answer, sentiment)
+        VALUES ($1, $2, $3, $4, $5)
+        """,
+        room,
+        question_id,
+        question_text,
+        answer,
+        sentiment,
+    )
+
+
+async def complete(room: str) -> None:
+    await get_pool().execute(
+        "UPDATE interviews SET completed_at = NOW() WHERE room = $1", room
+    )
+
+
+def _interview_dict(row: Any, answers: list[Any]) -> dict:
+    return {
+        "room": row["room"],
+        "survey_id": row["survey_id"],
+        "survey_title": row["survey_title"],
+        "participant": row["participant"],
+        "started_at": _iso(row["started_at"]),
+        "completed_at": _iso(row["completed_at"]),
+        "answers": [
             {
-                "question_id": question_id,
-                "question_text": question_text,
-                "answer": answer,
-                "sentiment": sentiment,
-                "recorded_at": _now(),
+                "question_id": a["question_id"],
+                "question_text": a["question_text"],
+                "answer": a["answer"],
+                "sentiment": a["sentiment"],
+                "recorded_at": _iso(a["recorded_at"]),
             }
+            for a in answers
+        ],
+    }
+
+
+async def get(room: str) -> Optional[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM interviews WHERE room = $1", room)
+        if row is None:
+            return None
+        answers = await conn.fetch(
+            "SELECT * FROM answers WHERE room = $1 ORDER BY recorded_at, id", room
         )
-        _write(room, rec)
+        return _interview_dict(row, answers)
 
 
-def complete(room: str) -> None:
-    with _lock:
-        rec = _read(room)
-        if rec is not None:
-            rec["completed_at"] = _now()
-            _write(room, rec)
-
-
-def get(room: str) -> Optional[dict]:
-    with _lock:
-        return _read(room)
-
-
-def list_all() -> list[dict]:
-    with _lock:
-        out = []
-        for path in sorted(_results_dir().glob("*.json")):
-            try:
-                out.append(json.loads(path.read_text()))
-            except Exception:  # noqa: BLE001
-                continue
-        out.sort(key=lambda r: r.get("started_at", ""), reverse=True)
-        return out
+async def list_all() -> list[dict]:
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT * FROM interviews ORDER BY started_at DESC")
+        answers = await conn.fetch("SELECT * FROM answers ORDER BY recorded_at, id")
+    grouped: dict[str, list] = {}
+    for a in answers:
+        grouped.setdefault(a["room"], []).append(a)
+    return [_interview_dict(r, grouped.get(r["room"], [])) for r in rows]

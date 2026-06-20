@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -29,16 +28,13 @@ from livekit.agents import (
 from livekit.plugins import anthropic, cartesia, deepgram, silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from . import results
+from . import db, results
+from .config import settings
 from .prompts import build_instructions
 from .survey import Survey, list_surveys, load_survey
 
 load_dotenv()
 logger = logging.getLogger("interviewer")
-
-# Default per repo guidance; override with INTERVIEWER_MODEL. For latency- or
-# cost-sensitive voice use, claude-sonnet-4-6 or claude-haiku-4-5 respond faster.
-MODEL = os.getenv("INTERVIEWER_MODEL", "claude-opus-4-8")
 
 
 class InterviewAgent(Agent):
@@ -67,7 +63,7 @@ class InterviewAgent(Agent):
             sentiment: Overall tone of the answer: positive, neutral, or negative.
         """
         question = self._by_id.get(question_id)
-        results.record_answer(
+        await results.record_answer(
             self.room_name,
             question_id,
             question.text if question else question_id,
@@ -84,7 +80,7 @@ class InterviewAgent(Agent):
         Call this once every survey question has been asked and recorded, just
         before you deliver the closing line and say goodbye.
         """
-        results.complete(self.room_name)
+        await results.complete(self.room_name)
         logger.info("interview complete for room %s", self.room_name)
         return "Interview recorded as complete."
 
@@ -106,15 +102,16 @@ def _resolve_survey(metadata: str | None) -> Survey:
 
 
 async def entrypoint(ctx: JobContext) -> None:
+    await db.init_db()  # idempotent; first job in this process creates the pool
     await ctx.connect()
     participant = await ctx.wait_for_participant()
     survey = _resolve_survey(participant.metadata)
     logger.info("starting survey '%s' in room %s", survey.id, ctx.room.name)
-    results.start_session(ctx.room.name, survey.id, survey.title, participant.identity)
+    await results.start_session(ctx.room.name, survey.id, survey.title, participant.identity)
 
     session = AgentSession(
         stt=deepgram.STT(model="nova-3"),
-        llm=anthropic.LLM(model=MODEL),
+        llm=anthropic.LLM(model=settings.interviewer_model),
         tts=cartesia.TTS(),
         vad=silero.VAD.load(),
         turn_detection=MultilingualModel(),
