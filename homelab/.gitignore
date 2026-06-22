@@ -1,0 +1,5 @@
+# Cluster join token written by install-server.sh (contains the node-token secret)
+scripts/.cluster-join
+
+# Real per-project secrets must never be committed (only *.example.yaml is tracked)
+projects/**/secret.yaml

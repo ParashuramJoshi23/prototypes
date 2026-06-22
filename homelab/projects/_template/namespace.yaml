@@ -1,0 +1,8 @@
+# One namespace per project = tenant boundary (cheap RBAC + resource quotas).
+# Replace PROJECT throughout this folder when copying for a new prototype.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: PROJECT
+  labels:
+    homelab.role: app

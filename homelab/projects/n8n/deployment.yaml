@@ -1,0 +1,78 @@
+# n8n in regular mode: one pod, backed by shared Postgres. Public image pulled
+# straight from Docker Hub (no local build/import needed). Near-stateless —
+# workflows/credentials live in Postgres, credentials encrypted with
+# N8N_ENCRYPTION_KEY (from the Secret), so a restart is safe without a PVC.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  replicas: 1
+  # n8n holds the .n8n dir on local disk; never run 2 of these in regular mode.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: n8n
+  template:
+    metadata:
+      labels:
+        app: n8n
+    spec:
+      containers:
+        - name: n8n
+          image: docker.io/n8nio/n8n:2.26.1
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: n8n-config
+            - secretRef:
+                name: n8n-secrets        # DB_POSTGRESDB_PASSWORD, N8N_ENCRYPTION_KEY
+          ports:
+            - containerPort: 5678
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+          volumeMounts:
+            - name: n8n-home
+              mountPath: /home/node/.n8n
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 5678
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 5678
+            initialDelaySeconds: 60
+            periodSeconds: 20
+      volumes:
+        # Writable home for n8n's config/cache. emptyDir = ephemeral; core data
+        # is in Postgres so this is safe to lose. Swap to a PVC if you later want
+        # filesystem binary-data to persist.
+        - name: n8n-home
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  # NodePort so the n8n editor is reachable on the VM host at :30678, which is
+  # what `tailscale serve` (running on the VM) proxies to for the tailnet URL.
+  # NodePort works even with servicelb disabled.
+  type: NodePort
+  selector:
+    app: n8n
+  ports:
+    - name: http
+      port: 5678
+      targetPort: 5678
+      nodePort: 30678

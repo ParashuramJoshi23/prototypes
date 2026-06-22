@@ -1,0 +1,53 @@
+# Runs the prototype's own image against the shared platform stores.
+# The image is built straight from the prototype folder's existing Dockerfile —
+# the homelab never imports prototype code, it only runs the container and
+# injects env. That's the whole "stay separate, no dependency" contract.
+#
+# envFrom layering: ConfigMap (non-secret URLs) + Secret (DATABASE_URL, AWS keys).
+# Both override the prototype's local defaults; nothing in the source changes.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: PROJECT
+  namespace: PROJECT
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: PROJECT
+  template:
+    metadata:
+      labels:
+        app: PROJECT
+    spec:
+      containers:
+        - name: app
+          # Built + imported into the cluster by the validate step; see README.
+          image: PROJECT:homelab
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: PROJECT-config
+            - secretRef:
+                name: PROJECT-secrets
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: PROJECT
+  namespace: PROJECT
+spec:
+  selector:
+    app: PROJECT
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000

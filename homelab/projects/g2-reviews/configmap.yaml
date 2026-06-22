@@ -1,0 +1,12 @@
+# g2-reviews wired to shared Redis. (DATABASE_URL is in the Secret from bootstrap.)
+# Redis db index 1 — see registry.md. g2-reviews only uses Postgres + Redis,
+# so no Kafka/S3 keys here.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: g2-reviews-config
+  namespace: g2-reviews
+data:
+  REDIS_URL: "redis://redis.platform.svc.cluster.local:6379/1"
+  DB_POOL_MIN: "5"
+  DB_POOL_MAX: "20"
