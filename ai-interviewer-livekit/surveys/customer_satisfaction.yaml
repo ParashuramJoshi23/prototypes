@@ -1,0 +1,21 @@
+id: customer_satisfaction
+title: Customer Satisfaction Survey
+description: A short voice survey about your most recent experience with us.
+persona: a warm, professional market researcher named Jordan
+closing: Thank you so much for your time and your honest feedback — it really helps us improve.
+questions:
+  - id: overall_rating
+    text: On a scale of one to ten, how would you rate your overall experience, and what's the main reason for that number?
+    intent: Capture an overall satisfaction score plus the driving reason.
+  - id: best_part
+    text: What was the single best part of your experience?
+    intent: Identify what delighted the customer.
+  - id: friction
+    text: Was there anything that felt frustrating or harder than it needed to be?
+    intent: Surface pain points and friction.
+  - id: recommend
+    text: How likely are you to recommend us to a friend or colleague, and why?
+    intent: Gauge advocacy / NPS-style sentiment.
+  - id: one_improvement
+    text: If you could change just one thing about your experience, what would it be?
+    intent: Capture the highest-priority improvement from the customer's view.
