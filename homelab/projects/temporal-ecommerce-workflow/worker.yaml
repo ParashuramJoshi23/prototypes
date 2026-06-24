@@ -1,0 +1,43 @@
+# The worker polls the task queue and runs the workflow + activity code. It is
+# long-running but serves no HTTP, so there is no Service for it. Built from the
+# prototype's Dockerfile (default CMD = `python -m app.worker`) and imported into
+# the VM's containerd — not pulled from a registry.
+#
+# The initContainer blocks until the Temporal frontend is reachable, so the
+# worker doesn't crash-loop while the dev server is still starting (k8s has no
+# docker-compose `depends_on`).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: temporal-ecommerce-workflow
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      initContainers:
+        - name: wait-for-temporal
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "until nc -z temporal 7233; do echo waiting for temporal:7233; sleep 2; done"
+      containers:
+        - name: worker
+          image: temporal-ecommerce-workflow:homelab
+          imagePullPolicy: IfNotPresent
+          envFrom:
+            - configMapRef:
+                name: temporal-ecommerce-workflow-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"

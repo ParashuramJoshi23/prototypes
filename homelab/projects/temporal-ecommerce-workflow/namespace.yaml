@@ -1,0 +1,10 @@
+# One namespace per project = tenant boundary (cheap RBAC + resource quotas).
+# Unlike the other prototypes, this one uses NO shared platform store — it runs
+# its own self-contained Temporal dev server in this namespace. So there is no
+# bootstrap-project.sh step (no Postgres db/role/secret) and no registry.md row.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: temporal-ecommerce-workflow
+  labels:
+    homelab.role: app

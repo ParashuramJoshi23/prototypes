@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Brings up the long-running pieces: the self-contained Temporal dev server and
+# the worker. The starter Job (starter.yaml) is applied separately to fire the
+# demo on demand — see this project's README.
+#
+# No Secret here: this project uses no shared platform store, so there is no
+# bootstrap-project.sh step.
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - temporal.yaml
+  - worker.yaml
