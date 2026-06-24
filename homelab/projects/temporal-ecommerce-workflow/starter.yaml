@@ -1,0 +1,43 @@
+# One-shot Job: submits the hardcoded sample order and prints the structured
+# result to its logs, then exits. This is the k8s equivalent of
+# `docker compose run --rm starter`.
+#
+# Kept OUT of kustomization.yaml on purpose — `kubectl apply -k` brings up the
+# long-running pieces (temporal + worker); firing the demo is an explicit step.
+# A Job's pod template is immutable, so to re-run the demo:
+#   kubectl delete job order-starter -n temporal-ecommerce-workflow --ignore-not-found
+#   kubectl apply -f homelab/projects/temporal-ecommerce-workflow/starter.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: order-starter
+  namespace: temporal-ecommerce-workflow
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: order-starter
+    spec:
+      restartPolicy: Never
+      initContainers:
+        - name: wait-for-temporal
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "until nc -z temporal 7233; do echo waiting for temporal:7233; sleep 2; done"
+      containers:
+        - name: starter
+          image: temporal-ecommerce-workflow:homelab
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "app.starter"]
+          envFrom:
+            - configMapRef:
+                name: temporal-ecommerce-workflow-config
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"

@@ -1,0 +1,96 @@
+# Self-contained Temporal dev server for this project (NOT a shared platform
+# store). `server start-dev` bundles the frontend (gRPC :7233) and Web UI
+# (:8233) in one process, backed by a sqlite file. Persisting that file on a PVC
+# means workflow history survives pod restarts — which is exactly what lets you
+# kill the worker mid-run and watch Temporal replay + recover.
+#
+# This mirrors the `temporal` service in the prototype's docker-compose.yml.
+# Public image, pulled from Docker Hub by the cluster.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: temporal-data
+  namespace: temporal-ecommerce-workflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path # k3s default provisioner
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: temporal
+  namespace: temporal-ecommerce-workflow
+spec:
+  replicas: 1
+  # Recreate (not RollingUpdate): the PVC is ReadWriteOnce, so two pods must
+  # never mount it at once during a rollout.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: temporal
+  template:
+    metadata:
+      labels:
+        app: temporal
+    spec:
+      containers:
+        - name: temporal
+          image: temporalio/temporal:latest
+          args:
+            - server
+            - start-dev
+            - --ip
+            - 0.0.0.0
+            - --db-filename
+            - /data/temporal.db
+            - --log-level
+            - warn
+          ports:
+            - name: frontend
+              containerPort: 7233
+            - name: ui
+              containerPort: 8233
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            tcpSocket:
+              port: 7233
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: 7233
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: temporal-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: temporal
+  namespace: temporal-ecommerce-workflow
+spec:
+  selector:
+    app: temporal
+  ports:
+    - name: frontend
+      port: 7233
+      targetPort: 7233
+    - name: ui
+      port: 8233
+      targetPort: 8233

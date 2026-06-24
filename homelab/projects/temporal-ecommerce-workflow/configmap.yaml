@@ -1,0 +1,14 @@
+# Non-secret wiring. Points the worker + starter at the in-namespace Temporal
+# dev server. TEMPORAL_ADDRESS is the env var both app/worker.py and
+# app/starter.py already read (defaulting to localhost:7233 for standalone dev) —
+# so no prototype source changes, same contract as the other homelab projects.
+#
+# "temporal" resolves intra-namespace; the fully-qualified form is
+# temporal.temporal-ecommerce-workflow.svc.cluster.local:7233.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: temporal-ecommerce-workflow-config
+  namespace: temporal-ecommerce-workflow
+data:
+  TEMPORAL_ADDRESS: "temporal:7233"
