@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  # Temporal dev server: bundles the frontend (gRPC on 7233) and the Web UI
+  # (http on 8233). State is persisted to a sqlite file on a volume so workflow
+  # history survives restarts — handy for observing recovery in the UI.
+  temporal:
+    image: temporalio/temporal:latest
+    command: server start-dev --ip 0.0.0.0 --db-filename /data/temporal.db --log-level warn
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      - temporal-data:/data
+    healthcheck:
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "127.0.0.1:7233"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # The worker polls the task queue and runs workflow + activity code.
+  worker:
+    build: .
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+  # One-shot: submits the hardcoded sample order, prints the structured result,
+  # then exits. Run with: docker compose run --rm starter
+  starter:
+    build: .
+    command: ["python", "-m", "app.starter"]
+    environment:
+      - TEMPORAL_ADDRESS=temporal:7233
+    depends_on:
+      temporal:
+        condition: service_healthy
+
+volumes:
+  temporal-data:
