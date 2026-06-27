@@ -1,0 +1,7 @@
+requests==2.32.3
+beautifulsoup4==4.12.3
+lxml==5.2.2
+
+# Optional: only needed for --render (JavaScript-rendered pages).
+# Install with `pip install playwright==1.44.0 && playwright install chromium`.
+# playwright==1.44.0
