@@ -136,5 +136,10 @@ polls `check_payment_status` until the order reads `PAID`.
 go test ./...
 ```
 
-Tests cover the cart/catalog logic and the "no keys → clear error" payment
-path; they don't hit Razorpay's network.
+Tests cover the cart/catalog logic, the spend-limit enforcement, and the
+"no keys → clear error" payment path. `harness_test.go` adds an **end-to-end
+test against an `httptest` mock of the Razorpay recurring endpoints** — it
+drives the whole Autopay lifecycle (mandate setup → pending → authorize →
+active → auto-charge within limits → over-limit fallback to a payment link →
+link paid) with no live keys and no browser, so the autonomous charge path is
+fully assertable in CI.
