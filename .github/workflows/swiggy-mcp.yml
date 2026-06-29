@@ -1,0 +1,38 @@
+name: swiggy-mcp
+
+on:
+  push:
+    branches: [master]
+    paths:
+      - "swiggy-mcp/**"
+      - ".github/workflows/swiggy-mcp.yml"
+  pull_request:
+    paths:
+      - "swiggy-mcp/**"
+      - ".github/workflows/swiggy-mcp.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: swiggy-mcp
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: swiggy-mcp/go.mod
+          cache-dependency-path: swiggy-mcp/go.sum
+
+      - name: Verify formatting
+        run: test -z "$(gofmt -l .)" || { echo 'gofmt needed on:'; gofmt -l .; exit 1; }
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
