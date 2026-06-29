@@ -48,6 +48,42 @@ func TestSearchScopedByKind(t *testing.T) {
 	}
 }
 
+func TestMandateCanCover(t *testing.T) {
+	m := &Mandate{Status: "ACTIVE", MaxPerOrder: 500, TotalBudget: 2000, Spent: 1800}
+
+	if ok, _ := m.canCover(150); !ok {
+		t.Fatal("₹150 should be coverable (under per-order cap and remaining ₹200)")
+	}
+	if ok, reason := m.canCover(600); ok {
+		t.Fatalf("₹600 exceeds per-order cap, want skip; reason=%q", reason)
+	}
+	if ok, reason := m.canCover(300); ok {
+		t.Fatalf("₹300 exceeds remaining ₹200 budget, want skip; reason=%q", reason)
+	}
+
+	m.Status = "PENDING_AUTH"
+	if ok, _ := m.canCover(100); ok {
+		t.Fatal("inactive mandate should never cover")
+	}
+}
+
+func TestRecordSpendExhaustsMandate(t *testing.T) {
+	s := newStore()
+	s.setMandate("u1", &Mandate{Status: "ACTIVE", MaxPerOrder: 500, TotalBudget: 500})
+	s.recordSpend("u1", 500)
+	if got := s.getMandate("u1").Status; got != "EXHAUSTED" {
+		t.Fatalf("want EXHAUSTED after spending full budget, got %s", got)
+	}
+}
+
+func TestSetupAutopayNeedsRazorpayKeys(t *testing.T) {
+	t.Setenv("RAZORPAY_KEY_ID", "")
+	t.Setenv("RAZORPAY_KEY_SECRET", "")
+	if _, _, _, err := createAutopayRegistration(&Mandate{ID: "mdt_1", MaxPerOrder: 500}); err == nil {
+		t.Fatal("expected error when keys are missing")
+	}
+}
+
 func TestCheckoutNeedsRazorpayKeys(t *testing.T) {
 	t.Setenv("RAZORPAY_KEY_ID", "")
 	t.Setenv("RAZORPAY_KEY_SECRET", "")

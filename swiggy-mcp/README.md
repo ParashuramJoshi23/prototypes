@@ -49,8 +49,47 @@ LLM agent ──(MCP tools)──► swiggy-mcp ──► in-memory catalog / ca
 | `add_to_cart`        | Add an item (cart is pinned to one vendor) |
 | `view_cart`          | Show cart + subtotal |
 | `clear_cart`         | Empty the cart |
-| `checkout`           | Create a Razorpay payment link for the cart |
+| `checkout`           | Place the order — auto-charges via Autopay if a mandate covers it, else a payment link |
 | `check_payment_status` | Poll Razorpay until the order is `PAID` |
+| `setup_autopay`      | Create a UPI Autopay mandate (approve once, then auto-charge within limits) |
+| `check_autopay`      | Check mandate status (`PENDING_AUTH`/`ACTIVE`/`EXHAUSTED`) + remaining budget |
+
+## UPI Autopay — bounded autonomous payment
+
+By default every order needs a human to pay the link. **UPI Autopay** flips
+that: the human approves a *mandate* **once** (one UPI PIN), authorizing
+recurring debits up to a cap — after which the agent charges within that cap
+**with no per-order approval**. This is the real primitive behind "agentic"
+spending: pre-authorized, bounded autonomy, not magic.
+
+Two limits enforce the bound:
+
+- **`max_per_order`** — the biggest single order the agent may auto-charge.
+- **`total_budget`** — cumulative auto-spend before the mandate is `EXHAUSTED`.
+
+Anything outside the bounds (too big, or budget used up) automatically falls
+back to the human-approved payment link, with an `autopay_skipped` reason.
+
+```
+setup_autopay(max_per_order, total_budget) ──► Razorpay registration link
+                                                 │
+        human approves mandate ONCE ◄────────────┘  (one UPI PIN, test mode)
+                                                 │
+        check_autopay ──► mandate ACTIVE ◄───────┘
+                                                 │
+        checkout (within limits) ──► chargeRecurring ──► PAID, no human step
+        checkout (over a limit)  ──► payment link (human pays), autopay_skipped
+```
+
+Under the hood this uses Razorpay's recurring API:
+`subscription_registration/auth_links` to set up the mandate, then
+`payments/create/recurring` to debit the saved token server-to-server. Note
+NPCI's **₹15,000** per-debit threshold: at/below it Autopay charges without a
+PIN; above it each charge may still need one (`setup_autopay` warns you).
+
+> The mandate *authorization* leg (the one-time approval) is a hosted Razorpay
+> flow that needs a browser/UPI-app step — that's the human-in-the-loop part by
+> design. Once authorized, the recurring charges are fully server-side.
 
 ## Setup
 

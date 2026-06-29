@@ -21,9 +21,11 @@ type Order struct {
 	Subtotal      float64    `json:"subtotal"`
 	DeliveryFee   float64    `json:"delivery_fee"`
 	Total         float64    `json:"total"`
-	PaymentLinkID string     `json:"payment_link_id"`
-	PaymentURL    string     `json:"payment_url"`
-	Status        string     `json:"status"` // PENDING_PAYMENT | PAID
+	PaymentLinkID string     `json:"payment_link_id,omitempty"`
+	PaymentURL    string     `json:"payment_url,omitempty"`
+	PaymentID     string     `json:"payment_id,omitempty"`
+	PaidVia       string     `json:"paid_via,omitempty"` // payment_link | upi_autopay
+	Status        string     `json:"status"`             // PENDING_PAYMENT | PAID
 }
 
 // razorpayBase is overridable so the flow can be exercised without live keys.

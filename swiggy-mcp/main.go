@@ -1,12 +1,13 @@
 // Command swiggy-mcp is a prototype MCP server that models the Swiggy ordering
 // flow — search a vendor, build a cart, check out — and settles payment through
-// a real Razorpay (test-mode) payment link.
+// Razorpay (test mode): either a one-off payment link the human pays, or a UPI
+// Autopay mandate the agent charges autonomously within pre-approved limits.
 //
 // It does NOT talk to Swiggy. Swiggy publishes no public ordering or payment
 // API, and Indian payment rails require the human to authorize every charge
-// (UPI PIN / card OTP). So the catalog is seed data and the only real external
-// call is to Razorpay, where the agent assembles the order and a human pays the
-// link — which is exactly how agentic commerce works in practice.
+// (UPI PIN / card OTP) — except under a UPI Autopay mandate the human approves
+// once, which is the actual primitive behind bounded agentic spending. So the
+// catalog is seed data and the only real external calls are to Razorpay.
 package main
 
 import (
@@ -96,6 +97,24 @@ func main() {
 		mcp.WithString("order_id", mcp.Required(), mcp.Description("Order id from checkout")),
 	), handleCheckPaymentStatus)
 
+	s.AddTool(mcp.NewTool("setup_autopay",
+		mcp.WithDescription("Set up a UPI Autopay mandate so future orders within the limits "+
+			"are charged automatically with no per-order approval. Returns a link the HUMAN "+
+			"opens ONCE to approve the mandate (one UPI PIN). Then call check_autopay."),
+		mcp.WithNumber("max_per_order", mcp.Required(), mcp.Description("Max rupees auto-charged for a single order")),
+		mcp.WithNumber("total_budget", mcp.Required(), mcp.Description("Max cumulative rupees this mandate may auto-spend")),
+		mcp.WithString("name", mcp.Required(), mcp.Description("Customer name")),
+		mcp.WithString("email", mcp.Required(), mcp.Description("Customer email")),
+		mcp.WithString("contact", mcp.Required(), mcp.Description("Customer phone, e.g. +919876543210")),
+		mcp.WithString("session", mcp.Description("Cart session id (default 'default')")),
+	), handleSetupAutopay)
+
+	s.AddTool(mcp.NewTool("check_autopay",
+		mcp.WithDescription("Check the UPI Autopay mandate: PENDING_AUTH, ACTIVE, or EXHAUSTED, "+
+			"plus remaining budget. Marks it ACTIVE once the human has approved it."),
+		mcp.WithString("session", mcp.Description("Cart session id (default 'default')")),
+	), handleCheckAutopay)
+
 	if err := server.ServeStdio(s); err != nil {
 		log.Fatalf("swiggy-mcp server error: %v", err)
 	}
@@ -160,32 +179,141 @@ func handleCheckout(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolRe
 	orderID := genOrderID()
 	desc := fmt.Sprintf("Swiggy MCP order from %s", cart.VendorName)
 
+	order := &Order{
+		ID:          orderID,
+		VendorName:  cart.VendorName,
+		Lines:       cart.Lines,
+		Subtotal:    subtotal,
+		DeliveryFee: deliveryFee,
+		Total:       total,
+	}
+
+	// If an Autopay mandate can cover this order, charge it automatically —
+	// no human step. This is the agentic path: bounded, pre-authorized spend.
+	if m := db.getMandate(sess); m != nil {
+		if ok, _ := m.canCover(total); ok {
+			payID, status, err := chargeRecurring(m, total, desc, orderID)
+			if err != nil {
+				return mcp.NewToolResultError("autopay charge failed: " + err.Error()), nil
+			}
+			db.recordSpend(sess, total)
+			order.Status = "PAID"
+			order.PaymentID = payID
+			order.PaidVia = "upi_autopay"
+			storeOrder(order)
+			db.clearCart(sess)
+			return jsonResult(map[string]any{
+				"order":              order,
+				"paid_automatically": true,
+				"razorpay_status":    status,
+				"remaining_budget":   m.remaining(),
+				"note":               "Charged on UPI Autopay mandate — no approval needed.",
+			}), nil
+		}
+	}
+
+	// Fallback: human-approved payment link.
 	linkID, url, err := createPaymentLink(orderID, desc, total)
 	if err != nil {
 		return mcp.NewToolResultError("could not create payment link: " + err.Error()), nil
 	}
-
-	order := &Order{
-		ID:            orderID,
-		VendorName:    cart.VendorName,
-		Lines:         cart.Lines,
-		Subtotal:      subtotal,
-		DeliveryFee:   deliveryFee,
-		Total:         total,
-		PaymentLinkID: linkID,
-		PaymentURL:    url,
-		Status:        "PENDING_PAYMENT",
-	}
-
-	db.mu.Lock()
-	db.orders[orderID] = order
-	db.mu.Unlock()
+	order.PaymentLinkID = linkID
+	order.PaymentURL = url
+	order.Status = "PENDING_PAYMENT"
+	order.PaidVia = "payment_link"
+	storeOrder(order)
 	db.clearCart(sess)
 
-	return jsonResult(map[string]any{
+	resp := map[string]any{
 		"order":           order,
 		"action_required": "Open payment_url and pay with a Razorpay test card, then call check_payment_status.",
 		"test_card":       "4111 1111 1111 1111, any future expiry, any CVV, OTP 1234 (Razorpay test mode)",
+	}
+	// Explain why we didn't use autopay, if a mandate exists but couldn't cover it.
+	if m := db.getMandate(sess); m != nil {
+		if ok, reason := m.canCover(total); !ok {
+			resp["autopay_skipped"] = reason
+		}
+	}
+	return jsonResult(resp), nil
+}
+
+func storeOrder(o *Order) {
+	db.mu.Lock()
+	db.orders[o.ID] = o
+	db.mu.Unlock()
+}
+
+func handleSetupAutopay(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	maxPerOrder := req.GetFloat("max_per_order", 0)
+	totalBudget := req.GetFloat("total_budget", 0)
+	if maxPerOrder <= 0 || totalBudget <= 0 {
+		return mcp.NewToolResultError("max_per_order and total_budget must be positive"), nil
+	}
+	name, err := req.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	email, err := req.RequireString("email")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	contact, err := req.RequireString("contact")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	m := &Mandate{
+		ID:          genMandateID(),
+		Name:        name,
+		Email:       email,
+		Contact:     contact,
+		MaxPerOrder: maxPerOrder,
+		TotalBudget: totalBudget,
+		Status:      "PENDING_AUTH",
+	}
+	custID, orderID, authURL, err := createAutopayRegistration(m)
+	if err != nil {
+		return mcp.NewToolResultError("could not create autopay mandate: " + err.Error()), nil
+	}
+	m.CustomerID = custID
+	m.AuthOrderID = orderID
+	m.AuthURL = authURL
+	db.setMandate(session(req), m)
+
+	resp := map[string]any{
+		"mandate":         m,
+		"action_required": "Open auth_url ONCE and approve the UPI Autopay mandate, then call check_autopay.",
+	}
+	if maxPerOrder > upiAutopayAFACap {
+		resp["warning"] = fmt.Sprintf(
+			"max_per_order ₹%.0f is above NPCI's ₹%.0f no-PIN threshold; debits above it may still need a PIN per charge.",
+			maxPerOrder, upiAutopayAFACap)
+	}
+	return jsonResult(resp), nil
+}
+
+func handleCheckAutopay(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	sess := session(req)
+	m := db.getMandate(sess)
+	if m == nil {
+		return mcp.NewToolResultError("no autopay mandate for this session — call setup_autopay first"), nil
+	}
+
+	if m.Status == "PENDING_AUTH" {
+		tokenID, status, err := fetchMandateToken(m.CustomerID)
+		if err != nil {
+			return mcp.NewToolResultError("could not check mandate: " + err.Error()), nil
+		}
+		if status == "confirmed" {
+			m.TokenID = tokenID
+			m.Status = "ACTIVE"
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"mandate":          m,
+		"remaining_budget": m.remaining(),
 	}), nil
 }
 

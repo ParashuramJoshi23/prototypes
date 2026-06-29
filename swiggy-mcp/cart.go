@@ -34,13 +34,18 @@ func (c *Cart) subtotal() float64 {
 // prototype: restart = clean slate. A real service would back this with Redis
 // or Postgres.
 type store struct {
-	mu     sync.Mutex
-	carts  map[string]*Cart
-	orders map[string]*Order
+	mu       sync.Mutex
+	carts    map[string]*Cart
+	orders   map[string]*Order
+	mandates map[string]*Mandate // UPI Autopay mandate per session
 }
 
 func newStore() *store {
-	return &store{carts: map[string]*Cart{}, orders: map[string]*Order{}}
+	return &store{
+		carts:    map[string]*Cart{},
+		orders:   map[string]*Order{},
+		mandates: map[string]*Mandate{},
+	}
 }
 
 var errVendorMismatch = errors.New("cart already has items from a different vendor; clear it first")
