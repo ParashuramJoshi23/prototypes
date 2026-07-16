@@ -28,6 +28,11 @@ hostname maps to a cluster Service by its in-cluster DNS name.
 | `credentials.example.yaml` | shape of the tunnel Secret (the real one is created by the script, never committed) |
 | `../scripts/setup-tunnel.sh` | creates the tunnel, mints the Secret, routes DNS |
 
+> **Handing this to another agent?** [`../deploy/AGENT_APPLY.md`](../deploy/AGENT_APPLY.md)
+> is a self-contained apply runbook + single-file bundle
+> ([`../deploy/sse-logs.apply.yaml`](../deploy/sse-logs.apply.yaml)) that a
+> kube-access agent can run top-to-bottom.
+
 ## One-time setup
 
 ```bash

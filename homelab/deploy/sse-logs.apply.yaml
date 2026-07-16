@@ -1,0 +1,206 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# GENERATED BUNDLE — do not edit by hand.
+# Concatenation of the canonical manifests (namespaces ordered first):
+#   homelab/projects/sse-logs/namespace.yaml
+#   homelab/edge/namespace.yaml
+#   homelab/projects/sse-logs/deployment.yaml   (Deployment + Service)
+#   homelab/edge/cloudflared.yaml               (ConfigMap + Deployment)
+#
+# Everything a `kubectl apply -f` needs EXCEPT the out-of-band Secret
+# (cloudflared-credentials). See homelab/deploy/AGENT_APPLY.md for the full
+# procedure, prerequisites, and verification.
+#
+# Regenerate:  python3 homelab/deploy/build-bundle.py
+# ─────────────────────────────────────────────────────────────────────────────
+--- # ns: sse-logs
+# One namespace per project = tenant boundary. sse-logs is store-less (no
+# Postgres/Redis/Kafka/S3), so unlike most projects it needs no bootstrap-project
+# run and no Secret — just this namespace, the Deployment, and the edge tunnel
+# route (homelab/edge) that publishes it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sse-logs
+  labels:
+    homelab.role: app
+--- # ns: edge
+# The public-ingress tenant. cloudflared lives here and is the ONE component
+# allowed to bridge the cluster to the internet — every prototype stays private
+# (ClusterIP only) and is reached exclusively through this tunnel's ingress map.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge
+  labels:
+    homelab.role: edge
+--- # sse-logs app (Deployment + Service)
+# sse-logs: Flask + Server-Sent Events demo, built from the prototype's own
+# Dockerfile. No backing stores, no Secret, no ConfigMap — the container is
+# self-contained. Log files are written to an emptyDir (safe to lose on restart).
+#
+# replicas: 1 is REQUIRED, not a resource choice. A deployment's log file is
+# written by a background thread in the pod that received POST /deployments; the
+# matching GET /stream must land on that SAME pod to read it. With >1 replica the
+# stream could hit a pod that never saw the deployment and find no log file.
+# Keep this single-replica (or add sticky sessions) — see edge/README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sse-logs
+  namespace: sse-logs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sse-logs
+  template:
+    metadata:
+      labels:
+        app: sse-logs
+    spec:
+      containers:
+        - name: app
+          image: sse-logs:homelab
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+      volumes:
+        # Per-deployment log files live here; ephemeral by design.
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sse-logs
+  namespace: sse-logs
+spec:
+  selector:
+    app: sse-logs
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
+--- # edge tunnel (ConfigMap + Deployment)
+# Cloudflare Tunnel — the homelab's public front door.
+#
+# Why a tunnel and not an Ingress: this cluster runs with traefik + servicelb
+# DISABLED (see homelab/README.md), and the minis sit behind a home router with
+# no public IP. cloudflared runs INSIDE the cluster and dials OUT to Cloudflare's
+# edge, so no ports are opened and the home IP is never exposed. Cloudflare then
+# routes each public hostname to a cluster Service by its in-cluster DNS name.
+#
+# Two pieces:
+#   - ConfigMap `cloudflared-config`  — the ingress map (hostname → Service). In
+#     git, human-readable; add a rule here per prototype you publish.
+#   - Secret `cloudflared-credentials` — the tunnel's credentials.json. NOT in
+#     git; created out-of-band by scripts/setup-tunnel.sh (same pattern as the
+#     project Secrets from bootstrap-project.sh).
+#
+# Replace `demos.example.com` with your own domain before applying, then run
+# scripts/setup-tunnel.sh to create the tunnel, mint the Secret, and route DNS.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: edge
+data:
+  config.yaml: |
+    # Tunnel referenced by NAME; the UUID + secret live in credentials.json.
+    tunnel: homelab-demos
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    no-autoupdate: true
+    # Local metrics + health (/ready) endpoint used by the readiness probe.
+    metrics: 0.0.0.0:2000
+
+    # Ingress rules are matched top-to-bottom; the last rule is the catch-all.
+    # service target = http://<svc>.<namespace>.svc.cluster.local:<port>
+    ingress:
+      - hostname: sse-logs.demos.example.com
+        service: http://sse-logs.sse-logs.svc.cluster.local:8000
+        # SSE needs unbuffered, long-lived responses. cloudflared streams by
+        # default; the app already sends `Cache-Control: no-cache` and
+        # `X-Accel-Buffering: no`, and we disable connection reuse timeouts here.
+        originRequest:
+          connectTimeout: 30s
+          # 0 = no cap on how long a single (streaming) request may run.
+          tcpKeepAlive: 30s
+      # ── add one block per published prototype, e.g. ──
+      # - hostname: shorthand-chat.demos.example.com
+      #   service: http://shorthand-chat.shorthand-chat.svc.cluster.local:8000
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: edge
+spec:
+  # cloudflared is stateless — 2 replicas give the tunnel HA (Cloudflare
+  # load-balances across all connected instances of the same tunnel).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2024.10.0
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config.yaml
+            - run
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config.yaml
+              subPath: config.yaml
+            - name: creds
+              mountPath: /etc/cloudflared/creds
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+        - name: creds
+          secret:
+            secretName: cloudflared-credentials
