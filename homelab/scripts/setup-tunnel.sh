@@ -6,19 +6,25 @@
 # Prereqs (one-time, on the Mac host):
 #   - `cloudflared` installed        (brew install cloudflared)
 #   - `cloudflared tunnel login`     (authorizes your Cloudflare account + zone)
-#   - a domain in that Cloudflare account (the <base-domain> below)
+#   - the domain's zone (parashuramjoshi.in) on Cloudflare (nameservers pointed
+#     at Cloudflare) so DNS records can be created for it
 #
 # Idempotent: re-running reuses an existing tunnel and re-applies the Secret.
 #
-#   Usage: scripts/setup-tunnel.sh <base-domain> [tunnel-name]
-#   Example: scripts/setup-tunnel.sh demos.example.com
+#   Usage: scripts/setup-tunnel.sh [tunnel-name]
+#   Example: scripts/setup-tunnel.sh
 #
-# After this, edit homelab/edge/cloudflared.yaml so the ingress hostnames use
-# <base-domain>, then: kubectl apply -k homelab/edge
+# PUBLISHED_HOSTS below must match the ingress hostnames in
+# homelab/edge/cloudflared.yaml. Add a host here when you publish a new project.
 set -euo pipefail
 
-BASE_DOMAIN="${1:?base domain for demo hostnames, e.g. demos.example.com}"
-TUNNEL="${2:-homelab-demos}"
+TUNNEL="${1:-homelab-demos}"
+
+# Public hostnames to route to this tunnel (one per published prototype).
+# Keep in sync with the `ingress:` block in homelab/edge/cloudflared.yaml.
+PUBLISHED_HOSTS=(
+  "sse.parashuramjoshi.in"
+)
 
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/homelab.yaml}"
 
@@ -46,20 +52,18 @@ kubectl create secret generic cloudflared-credentials -n edge \
 echo "   k8s: secret 'cloudflared-credentials' in ns 'edge' ✔"
 
 # ── 3. route DNS for each published hostname ─────────────────────────────────
-# Add a line here for every prototype you publish (must match the ingress rules
-# in edge/cloudflared.yaml).
-for host in "sse-logs.$BASE_DOMAIN"; do
+# Creates a proxied CNAME <host> -> <UUID>.cfargotunnel.com in the Cloudflare
+# zone. Requires the host's zone (parashuramjoshi.in) to be on Cloudflare.
+for host in "${PUBLISHED_HOSTS[@]}"; do
   echo ">> routing DNS: $host -> $UUID.cfargotunnel.com"
   cloudflared tunnel route dns "$TUNNEL" "$host" || echo "   (route may already exist — ok)"
 done
 
 cat <<EOF
 
-Tunnel '$TUNNEL' ready.
+Tunnel '$TUNNEL' ready. Routed: ${PUBLISHED_HOSTS[*]}
   Next:
-    1. In homelab/edge/cloudflared.yaml, set the ingress hostnames to use
-       '$BASE_DOMAIN' (replace 'demos.example.com').
-    2. kubectl apply -k homelab/edge
-    3. kubectl -n edge rollout status deploy/cloudflared
-    4. Visit https://sse-logs.$BASE_DOMAIN  (or embed it — see edge/README.md)
+    1. kubectl apply -k homelab/edge
+    2. kubectl -n edge rollout status deploy/cloudflared
+    3. Visit https://${PUBLISHED_HOSTS[0]}  (or embed it — see edge/README.md)
 EOF

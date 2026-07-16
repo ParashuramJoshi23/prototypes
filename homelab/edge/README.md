@@ -7,8 +7,8 @@ live demos in a blog) through a single Cloudflare Tunnel.
 ```
    visitor's browser                Cloudflare edge              your cluster (edge ns)
  ┌──────────────────┐   HTTPS    ┌────────────────┐   tunnel   ┌────────────────────┐
- │ blog <iframe>    │──────────▶ │  demos.<you>   │◀──────────▶│ cloudflared (×2)   │
- │ sse-logs.demos.. │            │  (TLS, WAF,    │  outbound  │  ingress map ──▶   │
+ │ blog <iframe>    │──────────▶ │ parashuramjoshi│◀──────────▶│ cloudflared (×2)   │
+ │ sse.parashuram.. │            │  .in (TLS, WAF,│  outbound  │  ingress map ──▶   │
  └──────────────────┘            │   rate limit)  │   only     │  svc/sse-logs:8000 │
                                  └────────────────┘            └────────────────────┘
 ```
@@ -35,36 +35,40 @@ hostname maps to a cluster Service by its in-cluster DNS name.
 
 ## One-time setup
 
+Prerequisite: the **`parashuramjoshi.in` zone must be on Cloudflare** (its
+nameservers pointed at Cloudflare) so a DNS record for `sse.` can be created.
+The main site can keep living wherever it does — only the `sse` record becomes a
+tunnel CNAME; other records are untouched.
+
 ```bash
 # prereqs on the Mac host
 brew install cloudflared
-cloudflared tunnel login            # authorize your Cloudflare account + zone
+cloudflared tunnel login            # authorize your Cloudflare account + the zone
 
-# create the tunnel, mint the in-cluster Secret, route DNS for sse-logs
+# create the tunnel, mint the in-cluster Secret, route DNS for sse.parashuramjoshi.in
 cd homelab
-scripts/setup-tunnel.sh demos.example.com     # use your own domain
+scripts/setup-tunnel.sh
 
-# point the ingress rules at your domain, then bring cloudflared up
-#   (edit edge/cloudflared.yaml: replace demos.example.com)
+# bring cloudflared up (ingress hostnames are already set to sse.parashuramjoshi.in)
 export KUBECONFIG=$HOME/.kube/homelab.yaml
 kubectl apply -k edge
 kubectl -n edge rollout status deploy/cloudflared
 ```
 
-`https://sse-logs.demos.example.com` is now live.
+`https://sse.parashuramjoshi.in` is now live.
 
 ## Publishing another prototype
 
 1. Deploy it (`kubectl apply -k projects/<name>`) so its Service exists.
 2. Add an ingress block to `edge/cloudflared.yaml`:
    ```yaml
-   - hostname: <name>.demos.example.com
+   - hostname: <name>.parashuramjoshi.in
      service: http://<name>.<name>.svc.cluster.local:8000
    ```
    (keep the `http_status:404` catch-all last).
-3. Add the hostname to the `for host in ...` loop in `scripts/setup-tunnel.sh`
+3. Add the hostname to the `PUBLISHED_HOSTS` array in `scripts/setup-tunnel.sh`
    and re-run it (routes the DNS), or route it manually:
-   `cloudflared tunnel route dns homelab-demos <name>.demos.example.com`.
+   `cloudflared tunnel route dns homelab-demos <name>.parashuramjoshi.in`.
 4. `kubectl apply -k edge && kubectl -n edge rollout restart deploy/cloudflared`.
 
 ## Embedding in a blog
@@ -73,7 +77,7 @@ The demos are plain web apps, so an `<iframe>` is all you need:
 
 ```html
 <iframe
-  src="https://sse-logs.demos.example.com"
+  src="https://sse.parashuramjoshi.in"
   title="Live deployment logs over Server-Sent Events"
   width="100%" height="560"
   style="border:1px solid #e5e7eb; border-radius:8px;"
@@ -84,7 +88,7 @@ The demos are plain web apps, so an `<iframe>` is all you need:
 
 To allow framing, the app must not send `X-Frame-Options: DENY`; sse-logs sends
 no such header, so it frames fine. If you later add one, use a Cloudflare
-Transform Rule to set `Content-Security-Policy: frame-ancestors https://<your-blog>`
+Transform Rule to set `Content-Security-Policy: frame-ancestors https://parashuramjoshi.in`
 instead of a blanket deny.
 
 ## Notes on SSE through the tunnel
@@ -102,7 +106,7 @@ instead of a blanket deny.
 ## Cost / safety
 
 - Cloudflare Tunnel + a hobby domain: free tier is plenty for demo traffic.
-- Put a **Cloudflare Rate Limiting rule** on `*.demos.example.com` (e.g. 30 req/10s
+- Put a **Cloudflare Rate Limiting rule** on `sse.parashuramjoshi.in` (e.g. 30 req/10s
   per IP) so an embedded demo can't be hammered into running up your home power.
 - These prototypes hold no real data (sse-logs generates fake logs), so exposure
   risk is low — but keep it that way: never route a store-backed admin endpoint

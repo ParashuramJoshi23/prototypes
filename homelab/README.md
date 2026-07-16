@@ -112,11 +112,11 @@ the cluster and dials out to Cloudflare, so nothing is exposed on the home
 network. One-time:
 
 ```bash
-scripts/setup-tunnel.sh demos.example.com   # your domain; creates tunnel + DNS
-kubectl apply -k edge                        # after pointing ingress at your domain
+scripts/setup-tunnel.sh                       # creates tunnel + routes DNS
+kubectl apply -k edge
 ```
 
-Then `sse-logs.demos.example.com` is live. Add one ingress rule + DNS route per
+Then `sse.parashuramjoshi.in` is live. Add one ingress rule + DNS route per
 published project (see `edge/README.md`).
 
 ## Add mini B later (when online)

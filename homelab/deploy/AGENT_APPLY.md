@@ -76,7 +76,7 @@ kill $PF
 > ⚠️ **Cannot be done with kube access alone.** Creating the tunnel requires a
 > `cloudflared tunnel login` against the owner's Cloudflare account and a domain.
 > If you don't have that, stop here and report Phase 1 done — ask the owner to
-> run `scripts/setup-tunnel.sh <base-domain>` (it mints the Secret + routes DNS).
+> run `scripts/setup-tunnel.sh` (it mints the Secret + routes DNS).
 
 Once the Secret `cloudflared-credentials` exists in namespace `edge`:
 
@@ -87,14 +87,13 @@ kubectl -n edge rollout status deploy/cloudflared --timeout=120s
 kubectl -n edge get pods
 ```
 
-If `cloudflared` is `CrashLoopBackOff`, the Secret is missing or the ingress
-hostnames in the ConfigMap still say `demos.example.com` — that's expected until
-Phase 2's prerequisites are met, **not** a bug in Phase 1.
+If `cloudflared` is `CrashLoopBackOff`, the Secret is missing — that's expected
+until Phase 2's prerequisites are met, **not** a bug in Phase 1.
 
 ### Verify Phase 2
 
 ```bash
-curl -s -o /dev/null -w "public: http %{http_code}\n" https://sse-logs.<base-domain>/
+curl -s -o /dev/null -w "public: http %{http_code}\n" https://sse.parashuramjoshi.in/
 ```
 
 ---
@@ -119,5 +118,5 @@ kubectl delete namespace sse-logs
 ## What to escalate, never guess
 
 - Building/importing `sse-logs:homelab` (needs host `docker` + `orb`).
-- `cloudflared tunnel login`, the base domain, DNS routing, the credentials Secret.
+- `cloudflared tunnel login`, DNS routing for `sse.parashuramjoshi.in`, the credentials Secret.
 - Any change to the ingress hostnames — these map to a real domain the owner controls.

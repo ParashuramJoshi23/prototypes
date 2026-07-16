@@ -13,8 +13,8 @@
 #     git; created out-of-band by scripts/setup-tunnel.sh (same pattern as the
 #     project Secrets from bootstrap-project.sh).
 #
-# Replace `demos.example.com` with your own domain before applying, then run
-# scripts/setup-tunnel.sh to create the tunnel, mint the Secret, and route DNS.
+# Hostnames are set to sse.parashuramjoshi.in. Run scripts/setup-tunnel.sh to
+# create the tunnel, mint the Secret, and route DNS (zone must be on Cloudflare).
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -32,7 +32,7 @@ data:
     # Ingress rules are matched top-to-bottom; the last rule is the catch-all.
     # service target = http://<svc>.<namespace>.svc.cluster.local:<port>
     ingress:
-      - hostname: sse-logs.demos.example.com
+      - hostname: sse.parashuramjoshi.in
         service: http://sse-logs.sse-logs.svc.cluster.local:8000
         # SSE needs unbuffered, long-lived responses. cloudflared streams by
         # default; the app already sends `Cache-Control: no-cache` and
@@ -42,7 +42,7 @@ data:
           # 0 = no cap on how long a single (streaming) request may run.
           tcpKeepAlive: 30s
       # ── add one block per published prototype, e.g. ──
-      # - hostname: shorthand-chat.demos.example.com
+      # - hostname: chat.parashuramjoshi.in
       #   service: http://shorthand-chat.shorthand-chat.svc.cluster.local:8000
       - service: http_status:404
 ---
