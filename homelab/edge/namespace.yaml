@@ -1,0 +1,9 @@
+# The public-ingress tenant. cloudflared lives here and is the ONE component
+# allowed to bridge the cluster to the internet — every prototype stays private
+# (ClusterIP only) and is reached exclusively through this tunnel's ingress map.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: edge
+  labels:
+    homelab.role: edge

@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Store-less project: no configmap.yaml and no Secret (contrast with the
+# _template, which wires Postgres/Redis/Kafka/S3). Public exposure is handled
+# separately by the shared tunnel in homelab/edge.
+resources:
+  - namespace.yaml
+  - deployment.yaml

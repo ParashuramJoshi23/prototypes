@@ -1,0 +1,446 @@
+<title>Snowflake ID — Live 64-bit Register Inspector</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    /* neutrals — cool bias toward the technical ground */
+    --bg:        #0c0f16;
+    --panel:     #121722;
+    --panel-2:   #0f131c;
+    --line:      #232c3b;
+    --line-soft: #1a2130;
+    --ink:       #e6ecf5;
+    --ink-dim:   #8593a8;
+    --ink-faint: #5a6678;
+    /* four signal fields */
+    --sign:  #4a5568;
+    --time:  #f0a83a;
+    --dc:    #38c6dc;
+    --worker:#9b8cff;
+    --seq:   #4ade80;
+    --time-bg:  rgba(240,168,58,.14);
+    --dc-bg:    rgba(56,198,220,.14);
+    --worker-bg:rgba(155,140,255,.15);
+    --seq-bg:   rgba(74,222,128,.13);
+    --sign-bg:  rgba(74,85,104,.16);
+    --accent:   var(--time);
+    --radius: 5px;
+    --mono: ui-monospace, "SF Mono", "SFMono-Regular", "JetBrains Mono", "Menlo", "Consolas", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg:        #f4f6fa;
+      --panel:     #ffffff;
+      --panel-2:   #f7f9fc;
+      --line:      #dbe1ec;
+      --line-soft: #e7ebf3;
+      --ink:       #16202f;
+      --ink-dim:   #55617a;
+      --ink-faint: #8a94a8;
+      --sign:  #94a0b4;
+      --time:  #c9781a;
+      --dc:    #0e93aa;
+      --worker:#6b53e6;
+      --seq:   #1f9d54;
+      --time-bg:  rgba(201,120,26,.12);
+      --dc-bg:    rgba(14,147,170,.12);
+      --worker-bg:rgba(107,83,230,.12);
+      --seq-bg:   rgba(31,157,84,.12);
+      --sign-bg:  rgba(148,160,180,.16);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg:#0c0f16; --panel:#121722; --panel-2:#0f131c; --line:#232c3b; --line-soft:#1a2130;
+    --ink:#e6ecf5; --ink-dim:#8593a8; --ink-faint:#5a6678;
+    --sign:#4a5568; --time:#f0a83a; --dc:#38c6dc; --worker:#9b8cff; --seq:#4ade80;
+    --time-bg:rgba(240,168,58,.14); --dc-bg:rgba(56,198,220,.14); --worker-bg:rgba(155,140,255,.15);
+    --seq-bg:rgba(74,222,128,.13); --sign-bg:rgba(74,85,104,.16);
+  }
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg:#f4f6fa; --panel:#ffffff; --panel-2:#f7f9fc; --line:#dbe1ec; --line-soft:#e7ebf3;
+    --ink:#16202f; --ink-dim:#55617a; --ink-faint:#8a94a8;
+    --sign:#94a0b4; --time:#c9781a; --dc:#0e93aa; --worker:#6b53e6; --seq:#1f9d54;
+    --time-bg:rgba(201,120,26,.12); --dc-bg:rgba(14,147,170,.12); --worker-bg:rgba(107,83,230,.12);
+    --seq-bg:rgba(31,157,84,.12); --sign-bg:rgba(148,160,180,.16);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: clamp(1.2rem, 3vw, 2.6rem) clamp(1rem, 3vw, 2rem) 4rem; }
+
+  /* ---- header ---- */
+  header { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 1rem; border-bottom: 1px solid var(--line); padding-bottom: 1.3rem; }
+  .eyebrow { font-family: var(--mono); font-size: .72rem; letter-spacing: .22em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 .5rem; }
+  h1 { font-family: var(--mono); font-weight: 700; font-size: clamp(1.5rem, 4vw, 2.15rem); letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+  h1 .hl { color: var(--accent); }
+  .lede { color: var(--ink-dim); max-width: 46ch; margin: .7rem 0 0; font-size: .96rem; }
+  .theme-btn { font-family: var(--mono); font-size: .75rem; color: var(--ink-dim); background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: .45rem .7rem; cursor: pointer; }
+  .theme-btn:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+  /* ---- register hero ---- */
+  .register { margin-top: 1.8rem; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.3rem 1.4rem 1.5rem; }
+  .reg-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .6rem 1.2rem; margin-bottom: 1rem; }
+  .reg-label { font-family: var(--mono); font-size: .72rem; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); }
+  .id-line { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+  .id-value { font-family: var(--mono); font-size: clamp(1.1rem, 3.4vw, 1.7rem); font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; word-break: break-all; }
+  .copy { font-family: var(--mono); font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); background: transparent; border: 1px solid var(--line); border-radius: 4px; padding: .3rem .5rem; cursor: pointer; white-space: nowrap; }
+  .copy:hover { color: var(--ink); border-color: var(--ink-faint); }
+
+  .bits-scroll { overflow-x: auto; padding-bottom: .5rem; margin: 0 -.2rem; scrollbar-width: thin; }
+  .bits { display: flex; gap: 2px; width: max-content; margin: 0 auto; padding: 0 .2rem; }
+  .grp { display: flex; gap: 2px; padding: 0 3px; }
+  .grp + .grp { margin-left: 4px; }
+  .bit {
+    width: clamp(11px, 1.35vw, 15px); height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono); font-size: .7rem; font-weight: 600;
+    border-radius: 2px; color: var(--ink-dim);
+    background: var(--panel-2); border: 1px solid var(--line-soft);
+    transition: background .18s ease, color .18s ease, border-color .18s ease;
+  }
+  .bit.on { color: var(--ink); }
+  .grp.f-sign  .bit.on { background: var(--sign-bg);   border-color: var(--sign);   color: var(--sign); }
+  .grp.f-time  .bit.on { background: var(--time-bg);   border-color: var(--time);   color: var(--time); }
+  .grp.f-dc    .bit.on { background: var(--dc-bg);     border-color: var(--dc);     color: var(--dc); }
+  .grp.f-work  .bit.on { background: var(--worker-bg); border-color: var(--worker); color: var(--worker); }
+  .grp.f-seq   .bit.on { background: var(--seq-bg);    border-color: var(--seq);    color: var(--seq); }
+  .bit.flash { animation: flash .5s ease; }
+  @keyframes flash { 0% { transform: translateY(-3px); } 100% { transform: translateY(0); } }
+  @media (prefers-reduced-motion: reduce) { .bit { transition: none; } .bit.flash { animation: none; } }
+
+  /* legend of fields under the register */
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .6rem; margin-top: 1.1rem; }
+  .leg { border: 1px solid var(--line); border-left-width: 3px; border-radius: var(--radius); padding: .55rem .7rem; background: var(--panel-2); }
+  .leg.f-sign  { border-left-color: var(--sign); }
+  .leg.f-time  { border-left-color: var(--time); }
+  .leg.f-dc    { border-left-color: var(--dc); }
+  .leg.f-work  { border-left-color: var(--worker); }
+  .leg.f-seq   { border-left-color: var(--seq); }
+  .leg .k { font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-faint); display: flex; justify-content: space-between; gap: .5rem; }
+  .leg .v { font-family: var(--mono); font-size: 1.02rem; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: .15rem; word-break: break-word; }
+  .leg.f-time .v { color: var(--time); } .leg.f-dc .v { color: var(--dc); }
+  .leg.f-work .v { color: var(--worker); } .leg.f-seq .v { color: var(--seq); }
+  .leg .sub { font-size: .74rem; color: var(--ink-dim); margin-top: .1rem; }
+
+  /* ---- controls ---- */
+  .controls { margin-top: 1.4rem; display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem 1.6rem; align-items: end; }
+  @media (max-width: 620px) { .controls { grid-template-columns: 1fr; } }
+  .ctl label { font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-dim); display: flex; justify-content: space-between; margin-bottom: .4rem; }
+  .ctl label b { color: var(--ink); font-weight: 600; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .btnrow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .6rem; align-items: center; }
+  button.act { font-family: var(--mono); font-size: .82rem; font-weight: 600; letter-spacing: .02em; cursor: pointer; border-radius: var(--radius); padding: .6rem 1rem; border: 1px solid var(--line); background: var(--panel); color: var(--ink); }
+  button.act:hover { border-color: var(--ink-faint); }
+  button.primary { background: var(--accent); color: #17130a; border-color: var(--accent); }
+  button.primary:hover { filter: brightness(1.08); }
+  .toggle { display: inline-flex; align-items: center; gap: .5rem; font-family: var(--mono); font-size: .78rem; color: var(--ink-dim); cursor: pointer; margin-left: auto; }
+  .toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+  .rate { font-family: var(--mono); font-size: .72rem; color: var(--ink-faint); }
+
+  /* ---- section blocks ---- */
+  section { margin-top: 2.4rem; }
+  h2 { font-family: var(--mono); font-size: .8rem; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-faint); margin: 0 0 .9rem; padding-bottom: .5rem; border-bottom: 1px solid var(--line); }
+
+  table.decode { width: 100%; border-collapse: collapse; font-family: var(--mono); font-size: .84rem; }
+  .decode-scroll { overflow-x: auto; }
+  table.decode th, table.decode td { text-align: left; padding: .55rem .7rem; border-bottom: 1px solid var(--line-soft); white-space: nowrap; }
+  table.decode th { font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-faint); font-weight: 500; }
+  table.decode td.binary { color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+  table.decode td.val { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .tag { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: .5rem; vertical-align: baseline; }
+  .tag.f-sign{background:var(--sign)} .tag.f-time{background:var(--time)} .tag.f-dc{background:var(--dc)} .tag.f-work{background:var(--worker)} .tag.f-seq{background:var(--seq)}
+
+  /* decoder */
+  .decoder { display: flex; flex-wrap: wrap; gap: .6rem; }
+  .decoder input[type=text] { flex: 1 1 260px; font-family: var(--mono); font-size: .95rem; background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: .6rem .75rem; color: var(--ink); }
+  .decoder input[type=text]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-color: var(--accent); }
+  .decode-out { margin-top: 1rem; }
+  .err { color: #ff7b72; font-family: var(--mono); font-size: .82rem; margin-top: .7rem; }
+  :root[data-theme="light"] .err, @media (prefers-color-scheme: light){ .err { color:#c0392b; } }
+
+  /* facts */
+  .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: .8rem; }
+  .fact { border: 1px solid var(--line); border-radius: var(--radius); padding: .9rem 1rem; background: var(--panel); }
+  .fact .n { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+  .fact .d { font-size: .82rem; color: var(--ink-dim); margin-top: .2rem; }
+
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line); font-family: var(--mono); font-size: .74rem; color: var(--ink-faint); display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; justify-content: space-between; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  .toast { position: fixed; bottom: 1.4rem; left: 50%; transform: translateX(-50%) translateY(1rem); background: var(--ink); color: var(--bg); font-family: var(--mono); font-size: .8rem; padding: .5rem .9rem; border-radius: var(--radius); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <p class="eyebrow">Distributed Systems · Prototype</p>
+      <h1>The <span class="hl">Snowflake</span> ID, one bit at a time</h1>
+      <p class="lede">A 64-bit, time-ordered, globally unique ID — minted with zero coordination between nodes. Watch the register fill as you generate.</p>
+    </div>
+    <button class="theme-btn" id="themeBtn" aria-label="Toggle color theme">◐ theme</button>
+  </header>
+
+  <div class="register" aria-live="polite">
+    <div class="reg-head">
+      <span class="reg-label">64-bit register</span>
+      <div class="id-line">
+        <span class="id-value" id="idValue">—</span>
+        <button class="copy" id="copyBtn">copy</button>
+      </div>
+    </div>
+
+    <div class="bits-scroll">
+      <div class="bits" id="bits"></div>
+    </div>
+
+    <div class="legend">
+      <div class="leg f-sign"><div class="k"><span>sign</span><span>bit 0</span></div><div class="v" id="legSign">0</div><div class="sub">always zero → positive</div></div>
+      <div class="leg f-time"><div class="k"><span>timestamp</span><span>bits 1–41</span></div><div class="v" id="legTime">—</div><div class="sub" id="legTimeSub">ms since epoch</div></div>
+      <div class="leg f-dc"><div class="k"><span>datacenter</span><span>bits 42–46</span></div><div class="v" id="legDc">0</div><div class="sub">0–31 · 32 datacenters</div></div>
+      <div class="leg f-work"><div class="k"><span>worker</span><span>bits 47–51</span></div><div class="v" id="legWork">0</div><div class="sub">0–31 · 32 workers each</div></div>
+      <div class="leg f-seq"><div class="k"><span>sequence</span><span>bits 52–63</span></div><div class="v" id="legSeq">0</div><div class="sub">0–4095 per millisecond</div></div>
+    </div>
+
+    <div class="controls">
+      <div class="ctl">
+        <label for="dc">datacenter_id <b id="dcOut">1</b></label>
+        <input type="range" id="dc" min="0" max="31" value="1">
+      </div>
+      <div class="ctl">
+        <label for="wk">worker_id <b id="wkOut">3</b></label>
+        <input type="range" id="wk" min="0" max="31" value="3">
+      </div>
+      <div class="btnrow">
+        <button class="act primary" id="genBtn">Generate</button>
+        <button class="act" id="burstBtn">Burst ×64</button>
+        <span class="rate" id="rate"></span>
+        <label class="toggle"><input type="checkbox" id="stream"> stream</label>
+      </div>
+    </div>
+  </div>
+
+  <section>
+    <h2>Field breakdown</h2>
+    <div class="decode-scroll">
+      <table class="decode">
+        <thead><tr><th>Field</th><th>Bits</th><th>Binary</th><th>Value</th><th>Meaning</th></tr></thead>
+        <tbody id="breakdown"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>Decode any ID</h2>
+    <div class="decoder">
+      <input type="text" id="decIn" placeholder="Paste a Snowflake ID, e.g. 145971828842496000" inputmode="numeric" autocomplete="off" spellcheck="false">
+      <button class="act primary" id="decBtn">Decode</button>
+    </div>
+    <div class="decode-out" id="decOut"></div>
+  </section>
+
+  <section>
+    <h2>Why it holds up</h2>
+    <div class="facts">
+      <div class="fact"><div class="n">2⁴¹</div><div class="d">milliseconds of range — about 69 years from the 2010 epoch before the clock field overflows.</div></div>
+      <div class="fact"><div class="n">4,096</div><div class="d">IDs per millisecond, per node, from the 12-bit sequence — then it spins to the next millisecond.</div></div>
+      <div class="fact"><div class="n">1,024</div><div class="d">independent nodes (32 datacenters × 32 workers), each minting IDs with no shared lock.</div></div>
+      <div class="fact"><div class="n">4.1M</div><div class="d">IDs/second per node at saturation — and every ID sorts by time, because time is the high bits.</div></div>
+    </div>
+  </section>
+
+  <footer>
+    <span>Faithful to <span style="color:var(--ink-dim)">twitter-snowflake-id/snowflake.py</span> — epoch 1288834974657, shifts 22/17/12.</span>
+    <span>Time-ordered · collision-free · coordination-free</span>
+  </footer>
+</div>
+
+<div class="toast" id="toast">copied</div>
+
+<script>
+(() => {
+  "use strict";
+  // ── faithful port of SnowflakeGenerator (BigInt for true 64-bit) ──
+  const EPOCH = 1288834974657n;
+  const SEQ_BITS = 12n, WORKER_BITS = 5n, DC_BITS = 5n;
+  const MAX_SEQ = (1n << SEQ_BITS) - 1n;      // 4095
+  const WORKER_SHIFT = SEQ_BITS;               // 12
+  const DC_SHIFT = SEQ_BITS + WORKER_BITS;     // 17
+  const TS_SHIFT = SEQ_BITS + WORKER_BITS + DC_BITS; // 22
+
+  const nowMs = () => BigInt(Date.now());
+
+  const gen = {
+    dc: 1n, worker: 3n, seq: 0n, last: -1n,
+    next() {
+      let t = nowMs();
+      if (t === this.last) {
+        this.seq = (this.seq + 1n) & MAX_SEQ;
+        if (this.seq === 0n) { while ((t = nowMs()) <= this.last) {} } // sequence exhausted → next ms
+      } else {
+        this.seq = 0n;
+        if (t < this.last) t = this.last; // clock guard: never go backwards
+      }
+      this.last = t;
+      return ((t - EPOCH) << TS_SHIFT) | (this.dc << DC_SHIFT) | (this.worker << WORKER_SHIFT) | this.seq;
+    }
+  };
+
+  const parse = (id) => ({
+    raw: id,
+    ts: (id >> TS_SHIFT) + EPOCH,
+    dc: (id >> DC_SHIFT) & 31n,
+    worker: (id >> WORKER_SHIFT) & 31n,
+    seq: id & MAX_SEQ,
+  });
+
+  // ── build the 64 bit cells, grouped by field ──
+  const FIELDS = [
+    { cls: "f-sign", start: 0,  len: 1  },
+    { cls: "f-time", start: 1,  len: 41 },
+    { cls: "f-dc",   start: 42, len: 5  },
+    { cls: "f-work", start: 47, len: 5  },
+    { cls: "f-seq",  start: 52, len: 12 },
+  ];
+  const bitsEl = document.getElementById("bits");
+  const cells = new Array(64);
+  for (const f of FIELDS) {
+    const g = document.createElement("div");
+    g.className = "grp " + f.cls;
+    for (let i = f.start; i < f.start + f.len; i++) {
+      const c = document.createElement("span");
+      c.className = "bit"; c.textContent = "0";
+      cells[i] = c; g.appendChild(c);
+    }
+    bitsEl.appendChild(g);
+  }
+
+  const fmt = (n) => n.toLocaleString("en-US");
+  const $ = (id) => document.getElementById(id);
+  let prevBinary = "0".repeat(64);
+
+  function render(id, animate) {
+    const bin = id.toString(2).padStart(64, "0");
+    for (let i = 0; i < 64; i++) {
+      const on = bin[i] === "1";
+      const cell = cells[i];
+      cell.textContent = bin[i];
+      cell.classList.toggle("on", on);
+      if (animate && bin[i] !== prevBinary[i]) {
+        cell.classList.remove("flash"); void cell.offsetWidth; cell.classList.add("flash");
+      }
+    }
+    prevBinary = bin;
+
+    const p = parse(id);
+    $("idValue").textContent = id.toString();
+    $("legSign").textContent = "0";
+    $("legTime").textContent = fmt(p.ts);
+    const d = new Date(Number(p.ts));
+    $("legTimeSub").textContent = d.toISOString().replace(".000", "").replace("T", " ").replace("Z", " UTC");
+    $("legDc").textContent = p.dc.toString();
+    $("legWork").textContent = p.worker.toString();
+    $("legSeq").textContent = p.seq.toString();
+
+    renderBreakdown(bin, p);
+  }
+
+  function renderBreakdown(bin, p) {
+    const rows = [
+      ["f-sign", "sign",       "0",     bin.slice(0,1),   "0",           "always 0 — keeps the ID positive"],
+      ["f-time", "timestamp",  "1–41",  bin.slice(1,42),  fmt(p.ts) + " ms", "ms since 2010 epoch — the high bits, so IDs sort by time"],
+      ["f-dc",   "datacenter", "42–46", bin.slice(42,47), p.dc.toString(), "which of 32 datacenters"],
+      ["f-work", "worker",     "47–51", bin.slice(47,52), p.worker.toString(), "which of 32 workers in that datacenter"],
+      ["f-seq",  "sequence",   "52–63", bin.slice(52,64), p.seq.toString(), "counter within the millisecond (0–4095)"],
+    ];
+    $("breakdown").innerHTML = rows.map(r =>
+      `<tr><td><span class="tag ${r[0]}"></span>${r[1]}</td><td>${r[2]}</td><td class="binary">${r[3]}</td><td class="val">${r[4]}</td><td style="white-space:normal;color:var(--ink-dim)">${r[5]}</td></tr>`
+    ).join("");
+  }
+
+  // ── generation + rate meter ──
+  let stamps = [];
+  function tickRate() {
+    const t = Date.now();
+    stamps.push(t);
+    stamps = stamps.filter(s => t - s < 1000);
+    $("rate").textContent = stamps.length > 1 ? stamps.length + " IDs/s" : "";
+  }
+  function one(animate = true) { render(gen.next(), animate); tickRate(); }
+
+  $("genBtn").addEventListener("click", () => one(true));
+  $("burstBtn").addEventListener("click", () => {
+    let last;
+    for (let i = 0; i < 64; i++) last = gen.next();  // same-ms burst → watch sequence climb
+    render(last, true); tickRate();
+  });
+
+  // sliders
+  const dcEl = $("dc"), wkEl = $("wk");
+  dcEl.addEventListener("input", () => { gen.dc = BigInt(dcEl.value); $("dcOut").textContent = dcEl.value; one(true); });
+  wkEl.addEventListener("input", () => { gen.worker = BigInt(wkEl.value); $("wkOut").textContent = wkEl.value; one(true); });
+
+  // stream toggle
+  let streamTimer = null;
+  $("stream").addEventListener("change", (e) => {
+    if (e.target.checked) streamTimer = setInterval(() => one(true), 350);
+    else { clearInterval(streamTimer); streamTimer = null; }
+  });
+
+  // copy
+  const toast = $("toast");
+  let toastTimer;
+  function showToast(msg) { toast.textContent = msg; toast.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove("show"), 1400); }
+  $("copyBtn").addEventListener("click", () => {
+    const v = $("idValue").textContent;
+    if (v && v !== "—") navigator.clipboard?.writeText(v).then(() => showToast("copied " + v)).catch(() => showToast("copy failed"));
+  });
+
+  // decoder
+  const decOut = $("decOut");
+  function decode() {
+    const raw = $("decIn").value.trim();
+    if (!raw) { decOut.innerHTML = ""; return; }
+    if (!/^\d+$/.test(raw)) { decOut.innerHTML = `<p class="err">Not a number — a Snowflake ID is decimal digits only.</p>`; return; }
+    let id;
+    try { id = BigInt(raw); } catch { decOut.innerHTML = `<p class="err">Could not parse that value.</p>`; return; }
+    if (id < 0n || id > (1n << 63n) - 1n) { decOut.innerHTML = `<p class="err">Out of range — must fit in 63 unsigned bits.</p>`; return; }
+    const p = parse(id);
+    const d = new Date(Number(p.ts));
+    const bin = id.toString(2).padStart(64, "0");
+    decOut.innerHTML =
+      `<div class="decode-scroll"><table class="decode"><tbody>
+        <tr><td><span class="tag f-time"></span>timestamp</td><td class="val">${fmt(p.ts)} ms</td><td style="color:var(--ink-dim)">${d.toISOString().replace("T"," ").replace("Z"," UTC")}</td></tr>
+        <tr><td><span class="tag f-dc"></span>datacenter</td><td class="val">${p.dc}</td><td style="color:var(--ink-dim)">of 0–31</td></tr>
+        <tr><td><span class="tag f-work"></span>worker</td><td class="val">${p.worker}</td><td style="color:var(--ink-dim)">of 0–31</td></tr>
+        <tr><td><span class="tag f-seq"></span>sequence</td><td class="val">${p.seq}</td><td style="color:var(--ink-dim)">of 0–4095</td></tr>
+      </tbody></table></div>`;
+    // also drive the main register from the decoded ID
+    render(id, true);
+  }
+  $("decBtn").addEventListener("click", decode);
+  $("decIn").addEventListener("keydown", (e) => { if (e.key === "Enter") decode(); });
+
+  // theme toggle
+  $("themeBtn").addEventListener("click", () => {
+    const root = document.documentElement;
+    const cur = root.getAttribute("data-theme")
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    root.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  });
+
+  // first paint
+  one(false);
+})();
+</script>

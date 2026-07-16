@@ -1,0 +1,10 @@
+# One namespace per project = tenant boundary. sse-logs is store-less (no
+# Postgres/Redis/Kafka/S3), so unlike most projects it needs no bootstrap-project
+# run and no Secret — just this namespace, the Deployment, and the edge tunnel
+# route (homelab/edge) that publishes it.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: sse-logs
+  labels:
+    homelab.role: app

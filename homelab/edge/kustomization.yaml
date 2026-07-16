@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The shared public-ingress layer. The Secret `cloudflared-credentials` is
+# created out-of-band by scripts/setup-tunnel.sh, so it is NOT listed here
+# (same convention as the project Secrets).
+resources:
+  - namespace.yaml
+  - cloudflared.yaml

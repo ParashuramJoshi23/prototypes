@@ -1,0 +1,105 @@
+# Cloudflare Tunnel — the homelab's public front door.
+#
+# Why a tunnel and not an Ingress: this cluster runs with traefik + servicelb
+# DISABLED (see homelab/README.md), and the minis sit behind a home router with
+# no public IP. cloudflared runs INSIDE the cluster and dials OUT to Cloudflare's
+# edge, so no ports are opened and the home IP is never exposed. Cloudflare then
+# routes each public hostname to a cluster Service by its in-cluster DNS name.
+#
+# Two pieces:
+#   - ConfigMap `cloudflared-config`  — the ingress map (hostname → Service). In
+#     git, human-readable; add a rule here per prototype you publish.
+#   - Secret `cloudflared-credentials` — the tunnel's credentials.json. NOT in
+#     git; created out-of-band by scripts/setup-tunnel.sh (same pattern as the
+#     project Secrets from bootstrap-project.sh).
+#
+# Hostnames are set to sse.parashuramjoshi.in. Run scripts/setup-tunnel.sh to
+# create the tunnel, mint the Secret, and route DNS (zone must be on Cloudflare).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cloudflared-config
+  namespace: edge
+data:
+  config.yaml: |
+    # Tunnel referenced by NAME; the UUID + secret live in credentials.json.
+    tunnel: homelab-demos
+    credentials-file: /etc/cloudflared/creds/credentials.json
+    no-autoupdate: true
+    # Local metrics + health (/ready) endpoint used by the readiness probe.
+    metrics: 0.0.0.0:2000
+
+    # Ingress rules are matched top-to-bottom; the last rule is the catch-all.
+    # service target = http://<svc>.<namespace>.svc.cluster.local:<port>
+    ingress:
+      - hostname: sse.parashuramjoshi.in
+        service: http://sse-logs.sse-logs.svc.cluster.local:8000
+        # SSE needs unbuffered, long-lived responses. cloudflared streams by
+        # default; the app already sends `Cache-Control: no-cache` and
+        # `X-Accel-Buffering: no`, and we disable connection reuse timeouts here.
+        originRequest:
+          connectTimeout: 30s
+          # 0 = no cap on how long a single (streaming) request may run.
+          tcpKeepAlive: 30s
+      # ── add one block per published prototype, e.g. ──
+      # - hostname: chat.parashuramjoshi.in
+      #   service: http://shorthand-chat.shorthand-chat.svc.cluster.local:8000
+      - service: http_status:404
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cloudflared
+  namespace: edge
+spec:
+  # cloudflared is stateless — 2 replicas give the tunnel HA (Cloudflare
+  # load-balances across all connected instances of the same tunnel).
+  replicas: 2
+  selector:
+    matchLabels:
+      app: cloudflared
+  template:
+    metadata:
+      labels:
+        app: cloudflared
+    spec:
+      containers:
+        - name: cloudflared
+          image: cloudflare/cloudflared:2024.10.0
+          args:
+            - tunnel
+            - --config
+            - /etc/cloudflared/config.yaml
+            - run
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 2000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/cloudflared/config.yaml
+              subPath: config.yaml
+            - name: creds
+              mountPath: /etc/cloudflared/creds
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: cloudflared-config
+        - name: creds
+          secret:
+            secretName: cloudflared-credentials

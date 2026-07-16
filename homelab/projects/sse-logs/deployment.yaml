@@ -1,0 +1,64 @@
+# sse-logs: Flask + Server-Sent Events demo, built from the prototype's own
+# Dockerfile. No backing stores, no Secret, no ConfigMap — the container is
+# self-contained. Log files are written to an emptyDir (safe to lose on restart).
+#
+# replicas: 1 is REQUIRED, not a resource choice. A deployment's log file is
+# written by a background thread in the pod that received POST /deployments; the
+# matching GET /stream must land on that SAME pod to read it. With >1 replica the
+# stream could hit a pod that never saw the deployment and find no log file.
+# Keep this single-replica (or add sticky sessions) — see edge/README.md.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sse-logs
+  namespace: sse-logs
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: sse-logs
+  template:
+    metadata:
+      labels:
+        app: sse-logs
+    spec:
+      containers:
+        - name: app
+          image: sse-logs:homelab
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "256Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: logs
+              mountPath: /app/logs
+      volumes:
+        # Per-deployment log files live here; ephemeral by design.
+        - name: logs
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: sse-logs
+  namespace: sse-logs
+spec:
+  selector:
+    app: sse-logs
+  ports:
+    - name: http
+      port: 8000
+      targetPort: 8000
