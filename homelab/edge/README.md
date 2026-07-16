@@ -103,11 +103,59 @@ instead of a blanket deny.
   with no file. If you need HA, add a Cloudflare session-affinity / sticky rule,
   or move the log store to the shared Redis — but for a demo, one replica is right.
 
-## Cost / safety
+## Operations: launch first, observe, then rate-limit
 
-- Cloudflare Tunnel + a hobby domain: free tier is plenty for demo traffic.
-- Put a **Cloudflare Rate Limiting rule** on `sse.parashuramjoshi.in` (e.g. 30 req/10s
-  per IP) so an embedded demo can't be hammered into running up your home power.
-- These prototypes hold no real data (sse-logs generates fake logs), so exposure
-  risk is low — but keep it that way: never route a store-backed admin endpoint
-  through this tunnel without auth in front.
+The origin here is a Mac Mini at home, so the "cost" of abuse is CPU/heat, not a
+cloud bill. The plan is deliberately **launch without a rate limit, watch real
+traffic, and only add the limit if volume warrants it** — adding it later is
+dashboard config with zero downtime (no redeploy, no pod restart).
+
+### Why launching un-limited is safe
+
+- `sse-logs` serves **fake, read-only** data (Faker-generated logs) — no DB, no
+  user data. Worst case is wasted CPU, not a breach.
+- The container has a **hard concurrency ceiling**: gunicorn `2 workers × 16
+  threads = 32` simultaneous streams. Beyond that, requests queue — the pod
+  degrades, it doesn't melt.
+- Cloudflare already fronts every request (baseline DDoS protection, TLS, bot
+  filtering) even with no rate-limit rule, and the home IP stays hidden.
+
+### Watch these signals
+
+Cloudflare side (no setup, free):
+- **Analytics & Logs → Traffic**, filtered to hostname `sse.parashuramjoshi.in`
+  — requests over time.
+- **Security → Events** — anything Cloudflare already flagged.
+
+Cluster side:
+```bash
+kubectl -n sse-logs top pod            # live CPU/memory (needs metrics-server)
+kubectl -n sse-logs get pod -w         # watch for restarts = it's being hammered
+kubectl -n sse-logs logs deploy/sse-logs --tail=50
+```
+
+### Add the rate limit when ANY of these is true
+
+- Sustained requests from a **single IP** looping the endpoint (bots/scrapers).
+- Pod **CPU pinned at its limit**, or the pod restarting under load.
+- You're about to embed it somewhere high-traffic and want a cap *before* the spike.
+
+### The rule to add (Cloudflare dashboard, free plan includes one)
+
+`parashuramjoshi.in` zone → **Security → Rate limiting rules → Create rule**:
+
+| Field | Value |
+|-------|-------|
+| If incoming requests match | `Hostname equals sse.parashuramjoshi.in` |
+| Rate | **30 requests per 10 seconds** |
+| Counting characteristic | **Client IP** |
+| Then | **Block** for 1 minute (or *Managed Challenge* for a softer response) |
+
+A blog reader makes a handful of requests; a loop trips it instantly. This is
+zone/account config — it is **not** in this repo and cannot be applied with
+`kubectl`. A kube-access agent should surface the need (from the signals above)
+and hand it to the owner, not attempt it.
+
+> ⚠️ These prototypes hold no real data, so exposure risk is low — keep it that
+> way: never route a store-backed or admin endpoint through this tunnel without
+> authentication in front of it.

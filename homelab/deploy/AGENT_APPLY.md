@@ -115,8 +115,25 @@ kubectl delete namespace sse-logs
 | `sse-logs` | deploy/sse-logs (1/1), svc/sse-logs:8000 | Ready — always achievable with kube access |
 | `edge` | deploy/cloudflared (2/2), configmap/cloudflared-config | Ready **only** after the Cloudflare Secret + DNS exist (Phase 2) |
 
+## After launch — observe, don't pre-limit
+
+The demo launches **without** a Cloudflare rate limit by design; watch real
+traffic first. Post-deploy, keep an eye on:
+
+```bash
+kubectl -n sse-logs top pod            # CPU/memory of the demo pod
+kubectl -n sse-logs get pod -w         # restarts under load
+```
+
+Plus Cloudflare **Analytics → Traffic** (filter hostname `sse.parashuramjoshi.in`).
+If a single IP loops the endpoint or the pod pins its CPU, that's the trigger to
+add a rate-limiting rule — see the "Operations" section of
+[`../edge/README.md`](../edge/README.md) for the exact rule. That rule is
+zone/account config: **surface the need to the owner, don't attempt it with kube.**
+
 ## What to escalate, never guess
 
 - Building/importing `sse-logs:homelab` (needs host `docker` + `orb`).
 - `cloudflared tunnel login`, DNS routing for `sse.parashuramjoshi.in`, the credentials Secret.
 - Any change to the ingress hostnames — these map to a real domain the owner controls.
+- Cloudflare rate-limiting / WAF rules — dashboard config, not `kubectl`.
