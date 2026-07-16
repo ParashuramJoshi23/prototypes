@@ -89,6 +89,36 @@ To onboard another prototype: `cp -r projects/_template projects/<name>`, replac
 `PROJECT` throughout, pick a free Redis index, add a row to `registry.md`, then
 run `bootstrap-project.sh <name> <idx>`.
 
+## Onboard a store-less prototype (example: sse-logs)
+
+Some prototypes use no backing stores at all, so they skip the whole
+bootstrap/Secret/ConfigMap dance — just build, deploy, and (optionally) publish:
+
+```bash
+docker build -t sse-logs:homelab ../sse-logs
+docker save sse-logs:homelab | orb -m homelab-a sudo k3s ctr images import -
+kubectl apply -k projects/sse-logs
+scripts/forward.sh sse-logs 8000        # private check → http://localhost:8000
+```
+
+`projects/sse-logs` has no `configmap.yaml`/Secret (contrast with `_template`).
+
+## Public exposure — the `edge` tunnel
+
+`forward.sh` is private (port-forward to your Mac). To make a prototype
+**publicly reachable** — e.g. embed a live demo in a blog — publish it through
+the shared Cloudflare Tunnel in [`edge/`](edge/README.md). cloudflared runs in
+the cluster and dials out to Cloudflare, so nothing is exposed on the home
+network. One-time:
+
+```bash
+scripts/setup-tunnel.sh demos.example.com   # your domain; creates tunnel + DNS
+kubectl apply -k edge                        # after pointing ingress at your domain
+```
+
+Then `sse-logs.demos.example.com` is live. Add one ingress rule + DNS route per
+published project (see `edge/README.md`).
+
 ## Add mini B later (when online)
 
 ```bash
