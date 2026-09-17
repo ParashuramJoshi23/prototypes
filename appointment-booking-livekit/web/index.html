@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Appointment Booking · LiveKit</title>
+  <!-- LiveKit JS client SDK (UMD build) -->
+  <script src="https://cdn.jsdelivr.net/npm/livekit-client/dist/livekit-client.umd.min.js"></script>
+  <style>
+    :root { --bg:#0f1117; --panel:#181b25; --line:#2a2f3d; --fg:#e8eaf0; --muted:#9aa3b4; --accent:#6c8cff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--fg); }
+    .wrap { max-width:720px; margin:0 auto; padding:32px 20px 64px; }
+    h1 { font-size:22px; margin:0 0 4px; }
+    .sub { color:var(--muted); margin:0 0 24px; }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:18px; margin-bottom:16px; }
+    label { display:block; font-size:13px; color:var(--muted); margin:0 0 6px; }
+    input { width:100%; padding:10px 12px; background:#0f121b; color:var(--fg); border:1px solid var(--line); border-radius:8px; font-size:15px; }
+    button { cursor:pointer; border:0; border-radius:8px; padding:11px 18px; font-size:15px; font-weight:600; }
+    .primary { background:var(--accent); color:#fff; }
+    .danger { background:#3a1e26; color:#ff9aa9; }
+    .ghost { background:#22263a; color:var(--fg); }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .actions { margin-top:16px; display:flex; gap:10px; align-items:center; }
+    .status { font-size:13px; color:var(--muted); }
+    .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#555; margin-right:6px; vertical-align:middle; }
+    .dot.live { background:#4ade80; }
+    .transcript { min-height:120px; max-height:340px; overflow-y:auto; }
+    .line { margin:0 0 10px; }
+    .line .who { font-size:12px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+    .line.you .who { color:#7fd0ff; }
+    .line.agent .who { color:#b9a3ff; }
+    .desc { color:var(--muted); font-size:13px; margin:8px 0 0; }
+    ul.appts { list-style:none; padding:0; margin:0; }
+    ul.appts li { padding:8px 0; border-bottom:1px solid var(--line); font-size:14px; }
+    ul.appts li:last-child { border-bottom:0; }
+    ul.appts .when { color:var(--accent); }
+    .hidden { display:none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Appointment Booking</h1>
+    <p class="sub">Talk to a voice receptionist that books straight into Google Calendar — LiveKit Agents + Claude.</p>
+
+    <div class="panel" id="setup">
+      <label for="name">Your name</label>
+      <input id="name" placeholder="Caller" />
+      <p class="desc">Try: “I'd like to book something for next Tuesday afternoon.”</p>
+      <div class="actions">
+        <button class="primary" id="join">Start call</button>
+        <span class="status"><span class="dot" id="dot"></span><span id="status">Not connected</span></span>
+      </div>
+    </div>
+
+    <div class="panel hidden" id="livePanel">
+      <label>Live transcript</label>
+      <div class="transcript" id="transcript"></div>
+      <div class="actions">
+        <button class="danger" id="leave">End call</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <label>Upcoming appointments on the calendar (next 7 days)</label>
+      <ul class="appts" id="appts"><li class="desc">Loading…</li></ul>
+      <div class="actions">
+        <button class="ghost" id="refresh">Refresh</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const LK = window.LivekitClient;
+    const $ = (id) => document.getElementById(id);
+    let room = null;
+    let localIdentity = null;
+
+    function setStatus(text, live) {
+      $('status').textContent = text;
+      $('dot').classList.toggle('live', !!live);
+    }
+
+    function addLine(identity, text, isFinal) {
+      const who = identity === localIdentity ? 'you' : 'agent';
+      const label = who === 'you' ? 'You' : 'Receptionist';
+      const id = `seg-${identity}`;
+      let el = document.querySelector(`.line[data-id="${id}"][data-open="1"]`);
+      if (!el) {
+        el = document.createElement('div');
+        el.className = `line ${who}`;
+        el.dataset.id = id;
+        el.dataset.open = '1';
+        el.innerHTML = `<div class="who">${label}</div><div class="text"></div>`;
+        $('transcript').appendChild(el);
+      }
+      el.querySelector('.text').textContent = text;
+      if (isFinal) el.dataset.open = '0';
+      $('transcript').scrollTop = $('transcript').scrollHeight;
+    }
+
+    async function loadAppointments() {
+      const list = $('appts');
+      try {
+        const res = await fetch('/api/appointments?days=7');
+        if (!res.ok) throw new Error((await res.json()).detail || res.statusText);
+        const items = await res.json();
+        list.innerHTML = '';
+        if (!items.length) list.innerHTML = '<li class="desc">Nothing booked yet.</li>';
+        items.forEach(a => {
+          const li = document.createElement('li');
+          const when = new Date(a.start).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+          li.innerHTML = `<span class="when">${when}</span> — ${a.summary}`;
+          list.appendChild(li);
+        });
+      } catch (e) {
+        list.innerHTML = `<li class="desc">Calendar unavailable: ${e.message}</li>`;
+      }
+    }
+
+    async function join() {
+      $('join').disabled = true;
+      setStatus('Requesting token…');
+      try {
+        const res = await fetch('/api/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ participant_name: $('name').value || 'Caller' }),
+        });
+        if (!res.ok) throw new Error((await res.json()).detail || 'token request failed');
+        const data = await res.json();
+        localIdentity = data.identity;
+
+        room = new LK.Room({ adaptiveStream: true, dynacast: true });
+
+        // Play the agent's audio.
+        room.on(LK.RoomEvent.TrackSubscribed, (track) => {
+          if (track.kind === LK.Track.Kind.Audio) {
+            const el = track.attach();
+            el.autoplay = true;
+            document.body.appendChild(el);
+          }
+        });
+
+        room.on(LK.RoomEvent.Disconnected, () => {
+          setStatus('Call ended');
+          $('livePanel').classList.add('hidden');
+          $('setup').classList.remove('hidden');
+          $('join').disabled = false;
+          loadAppointments();
+        });
+
+        // Transcriptions arrive as text streams on the lk.transcription topic.
+        room.registerTextStreamHandler('lk.transcription', async (reader, info) => {
+          const identity = info.identity;
+          let buffer = '';
+          for await (const chunk of reader) {
+            buffer += chunk;
+            addLine(identity, buffer, false);
+          }
+          const isFinal = reader.info?.attributes?.['lk.transcription_final'] === 'true';
+          addLine(identity, buffer, isFinal !== false);
+        });
+
+        setStatus('Connecting…');
+        await room.connect(data.server_url, data.token);
+        await room.localParticipant.setMicrophoneEnabled(true);
+
+        setStatus(`On a call with ${data.business}`, true);
+        $('setup').classList.add('hidden');
+        $('livePanel').classList.remove('hidden');
+      } catch (err) {
+        console.error(err);
+        setStatus('Error: ' + err.message);
+        $('join').disabled = false;
+      }
+    }
+
+    async function leave() {
+      if (room) await room.disconnect();
+    }
+
+    $('join').addEventListener('click', join);
+    $('leave').addEventListener('click', leave);
+    $('refresh').addEventListener('click', loadAppointments);
+    loadAppointments();
+  </script>
+</body>
+</html>
