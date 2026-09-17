@@ -1,0 +1,26 @@
+# LiveKit Agents voice framework + plugins (versions track the agents release)
+livekit-agents~=1.6
+livekit-plugins-anthropic~=1.6
+livekit-plugins-deepgram~=1.6
+livekit-plugins-cartesia~=1.6
+livekit-plugins-silero~=1.6
+livekit-plugins-turn-detector~=1.6
+
+# Server SDK (used to mint join tokens)
+livekit-api~=1.0
+
+# Google Calendar API + auth (OAuth desktop flow and service accounts)
+google-api-python-client~=2.150
+google-auth~=2.35
+google-auth-oauthlib~=1.2
+
+# Token API and static web host
+fastapi~=0.115
+uvicorn[standard]~=0.32
+
+# Config
+python-dotenv~=1.0
+pydantic-settings~=2.5
+
+# Tests
+pytest~=8.3
